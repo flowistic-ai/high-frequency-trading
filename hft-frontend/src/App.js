@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Plot from 'react-plotly.js'; // Import Plotly component
 import './App.css';
 
-const API_BASE_URL = 'http://127.0.0.1:8000'; // Your FastAPI backend URL
+// const API_BASE_URL = 'http://127.0.0.1:8000'; // Your FastAPI backend URL
+const API_BASE_URL = 'PASTE_YOUR_RENDER_URL_HERE'; // <-- CHANGE THIS to your deployed Render backend URL
 const SYMBOLS = [
   "BTC/USDT", "ETH/USDT", "LTC/USDT", "XRP/USDT", "BCH/USDT", "ADA/USDT", "SOL/USDT", "DOGE/USDT", "DOT/USDT", "LINK/USDT"
 ];
