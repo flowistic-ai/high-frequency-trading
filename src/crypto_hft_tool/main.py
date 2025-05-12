@@ -56,7 +56,9 @@ if data_provider.error:
 
 # Store ZScore trackers per symbol
 # We need a default window size for RollingZScore if not dynamically configured per symbol via API
-DEFAULT_ZSCORE_WINDOW = 100 # Reduced for more responsive signals
+DEFAULT_ZSCORE_WINDOW = 30  # Reduced from 100 to use less memory
+# Limit number of symbols we track to reduce memory usage on Render Free Tier
+ACTIVE_SYMBOLS = SYMBOLS[:3]  # Only track first 3 symbols (BTC, ETH, LTC)
 zscore_trackers: Dict[str, RollingZScore] = {}
 simulator = TradeSimulator()
 risk_manager = RiskManager()
@@ -69,7 +71,7 @@ EXIT_Z_THRESHOLD = 0.3
 STOP_LOSS_AMOUNT = STOP_LOSS_SPREAD_AMOUNT # Get from config
 MIN_SPREAD_PCT = 0.00001  # Lowered to 0.001% of price as minimum spread for arbitrage
 TRADE_COOLDOWN_SEC = 30  # Minimum seconds between trades per symbol
-last_trade_time = {sym: 0 for sym in SYMBOLS}
+last_trade_time = {sym: 0 for sym in ACTIVE_SYMBOLS}  # Only initialize for active symbols
 
 # --- Pydantic Models for API Request/Response ---
 class BookLevel(BaseModel):
@@ -133,8 +135,8 @@ async def startup_event():
     # Initialize ZScore trackers for all known symbols from config
     # This pre-populates them, so they start accumulating data if your design implies that.
     # Alternatively, create them on-demand in the endpoint.
-    if SYMBOLS:
-        for sym in SYMBOLS:
+    if ACTIVE_SYMBOLS:  # Changed from SYMBOLS to ACTIVE_SYMBOLS
+        for sym in ACTIVE_SYMBOLS:  # Changed from SYMBOLS to ACTIVE_SYMBOLS
             if sym not in zscore_trackers:
                 zscore_trackers[sym] = RollingZScore(window_size=DEFAULT_ZSCORE_WINDOW)
     logger.info("FastAPI application startup complete.")
@@ -147,7 +149,7 @@ async def get_market_data_all():
     Return latest market data (including Z-score) for all symbols.
     """
     result = {}
-    for symbol in SYMBOLS:
+    for symbol in ACTIVE_SYMBOLS:  # Changed from SYMBOLS to ACTIVE_SYMBOLS
         books = data_provider.get_top_of_book(symbol)
         current_ts = pd.Timestamp.utcnow()
         if not books:
