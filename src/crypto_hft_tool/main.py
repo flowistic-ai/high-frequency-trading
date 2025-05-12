@@ -27,18 +27,20 @@ app = FastAPI(
 # --- CORS Middleware Configuration ---
 # List of origins that are allowed to make requests to this backend.
 # Use ["*"] for development if needed, but be more specific for production.
-origins = [
-    "http://localhost:3000", # React development server
-    "http://localhost",      # Sometimes needed depending on browser/setup
-    "https://curious-cranachan-9e504e.netlify.app", # Added Netlify frontend URL
-    # Add the Render backend URL here later if needed for direct API access/testing
-]
+# DEBUGGING: Temporarily allow all origins
+origins = ["*"]
+# origins = [
+#     "http://localhost:3000", # React development server
+#     "http://localhost",      # Sometimes needed depending on browser/setup
+#     "https://curious-cranachan-9e504e.netlify.app", # Added Netlify frontend URL
+#     "YOUR_NEW_RENDER_BACKEND_URL_HERE" # Optional: Add the new Render backend URL for direct access
+# ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True, # Allow cookies if needed later
-    allow_methods=["GET"], # Allow only GET requests for now
+    allow_origins=origins, # Changed to allow all
+    allow_credentials=True,
+    allow_methods=["GET"], # Consider allowing ["*"] temporarily if needed
     allow_headers=["*"], # Allow all headers
 )
 
