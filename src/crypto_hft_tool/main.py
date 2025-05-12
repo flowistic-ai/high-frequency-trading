@@ -30,7 +30,8 @@ app = FastAPI(
 origins = [
     "http://localhost:3000", # React development server
     "http://localhost",      # Sometimes needed depending on browser/setup
-    # Add any other origins if you deploy your frontend elsewhere later
+    "https://curious-cranachan-9e504e.netlify.app", # Added Netlify frontend URL
+    # Add the Render backend URL here later if needed for direct API access/testing
 ]
 
 app.add_middleware(
