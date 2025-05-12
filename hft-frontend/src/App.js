@@ -109,15 +109,19 @@ function App() {
 
   // --- Live Trades Ticker ---
   const tradesTicker = (
-    <div className="trades-ticker">
-      <strong>Live Trades:</strong>
-      <marquee behavior="scroll" direction="left" scrollamount="5" style={{ color: '#0197ae', fontWeight: 600, marginLeft: 10 }}>
-        {recentTrades.length > 0 ? recentTrades.map((trade, idx) => (
-          <span key={idx} style={{ marginRight: 30 }}>
-            [{trade.symbol}] {new Date(trade.timestamp).toLocaleTimeString()} | PnL: <span className={trade.pnl > 0 ? 'pnl-positive' : trade.pnl < 0 ? 'pnl-negative' : ''}>{trade.pnl?.toFixed(6)}</span>
-          </span>
-        )) : 'No recent trades.'}
-      </marquee>
+    <div className="live-trades-ticker">
+      <h2>Live Trades</h2>
+      <div className="ticker-content" style={{ overflowX: 'auto', whiteSpace: 'nowrap', border: '1px solid #ccc', padding: '5px' }}>
+        {recentTrades.length > 0 ? (
+          recentTrades.map((trade, index) => (
+            <span key={index} style={{ marginRight: '20px' }}>
+              {trade.symbol} {trade.buy_exchange} &gt; {trade.sell_exchange} @ {trade.sell_price.toFixed(4)} (PnL: {trade.pnl.toFixed(6)})
+            </span>
+          ))
+        ) : (
+          <span>No live trades yet...</span>
+        )}
+      </div>
     </div>
   );
 
