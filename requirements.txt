@@ -1,0 +1,8 @@
+ccxt
+websockets
+pandas
+numpy
+python-dotenv
+pytest
+streamlit
+plotly

@@ -1,0 +1,6 @@
+ccxt
+websockets
+pandas
+numpy
+python-dotenv
+pytest
