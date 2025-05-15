@@ -1,21 +1,29 @@
-from fastapi import FastAPI, HTTPException, Path
+from fastapi import FastAPI, HTTPException, Path, Query
 from fastapi.middleware.cors import CORSMiddleware # Import CORS Middleware
-from pydantic import BaseModel
-from typing import Dict, Optional, List
+from pydantic import BaseModel, Field
+from typing import Dict, Optional, List, Union, Any
 import pandas as pd # For pd.Timestamp
 import logging # Import logging
 import time
+from datetime import datetime, timezone
+import asyncio
 print(">>> RUNNING main.py FROM:", __file__)
 
-# Assuming your existing modules are structured to be importable like this:
-from .data_provider import DataProvider
+# Update imports to use new class names
+from .data_provider import BaseDataProvider, SimulatedSingleExchangeDataProvider, CCXTSingleExchangeDataProvider
 from .signals import RollingZScore
 from .simulation import TradeSimulator
-from .risk_manager import RiskManager
-from .config import SYMBOLS, data_folder, STOP_LOSS_SPREAD_AMOUNT, FEES # Add FEES if needed by simulator/risk
+# from .risk_manager import RiskManager # Removed
+from .enhanced_signals import EnhancedSignalProcessor, SignalMetrics
+from .config import (
+    SYMBOLS, TRADE_SETTINGS, ZSCORE_SETTINGS, # RISK_SETTINGS, # Removed
+    DATA_PROVIDER_MODE, LOG_LEVEL, TARGET_EXCHANGE, ENHANCED_SIGNAL_SETTINGS,
+    API_PORT, API_HOST, FEES, MIN_SPREAD_PCT, # STOP_LOSS_SPREAD_AMOUNT, # Removed
+    ARBITRAGE_EXCHANGES
+)
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=getattr(logging, LOG_LEVEL))
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
@@ -26,50 +34,62 @@ app = FastAPI(
 
 # --- CORS Middleware Configuration ---
 # List of origins that are allowed to make requests to this backend.
-# Use ["*"] for development if needed, but be more specific for production.
-# DEBUGGING: Temporarily allow all origins
 origins = ["*"]
-# origins = [
-#     "http://localhost:3000", # React development server
-#     "http://localhost",      # Sometimes needed depending on browser/setup
-#     "https://curious-cranachan-9e504e.netlify.app", # Added Netlify frontend URL
-#     "YOUR_NEW_RENDER_BACKEND_URL_HERE" # Optional: Add the new Render backend URL for direct access
-# ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins, # Changed to allow all
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["GET"], # Consider allowing ["*"] temporarily if needed
-    allow_headers=["*"], # Allow all headers
+    allow_methods=["*"],  # Allow all methods
+    allow_headers=["*"],  # Allow all headers
 )
 
 # --- Global State Management (Simplified for initial setup) ---
 # In a production app, consider more robust state management or dependency injection.
 
-# Initialize DataProvider for live data by default for the API
-# For a real app, you might want to configure this (e.g., via env vars or a config endpoint)
-data_provider = DataProvider(live=True)
+# Initialize DataProvider based on mode
+data_provider: BaseDataProvider
+if DATA_PROVIDER_MODE == "simulated":
+    data_provider = SimulatedSingleExchangeDataProvider(symbols=SYMBOLS)
+    logger.info("Using SimulatedSingleExchangeDataProvider.")
+elif DATA_PROVIDER_MODE == "ccxt":
+    data_provider = CCXTSingleExchangeDataProvider(symbols=SYMBOLS)
+    logger.info("Using CCXTSingleExchangeDataProvider.")
+else:
+    logger.error("Invalid DATA_PROVIDER_MODE. Exiting.")
+    exit(1)
+
 if data_provider.error:
-    logger.critical(f"CRITICAL: DataProvider failed to initialize in live mode: {data_provider.error}")
+    logger.critical(f"CRITICAL: DataProvider failed to initialize: {data_provider.error}")
     # You might want to prevent the app from starting or enter a degraded state
 
 # Store ZScore trackers per symbol
 # We need a default window size for RollingZScore if not dynamically configured per symbol via API
 DEFAULT_ZSCORE_WINDOW = 30  # Reduced from 100 to use less memory
-# Limit number of symbols we track to reduce memory usage on Render Free Tier
-ACTIVE_SYMBOLS = SYMBOLS[:3]  # Only track first 3 symbols (BTC, ETH, LTC)
+# Update to use all symbols instead of limiting to 3
+ACTIVE_SYMBOLS = SYMBOLS  # Track all symbols
 zscore_trackers: Dict[str, RollingZScore] = {}
 simulator = TradeSimulator()
-risk_manager = RiskManager()
+# risk_manager = RiskManager() # Removed
+
+# Initialize enhanced signal processors
+enhanced_signal_processors = {}
+for symbol in ACTIVE_SYMBOLS:
+    zscore_trackers[symbol] = RollingZScore(windows=[DEFAULT_ZSCORE_WINDOW])
+    enhanced_signal_processors[symbol] = EnhancedSignalProcessor(
+        symbol=symbol,
+        volatility_window=ENHANCED_SIGNAL_SETTINGS['volatility_window'],
+        correlation_window=ENHANCED_SIGNAL_SETTINGS['correlation_window'],
+        momentum_window=ENHANCED_SIGNAL_SETTINGS['momentum_window'],
+        signal_threshold=ENHANCED_SIGNAL_SETTINGS['signal_threshold'],
+        vol_impact=ENHANCED_SIGNAL_SETTINGS['vol_impact']
+    )
 
 # --- Constants/Configurable Params (used in logic) ---
 # Ideally, load from config.py or environment variables
 Z_SCORE_THRESHOLD = 1.2
 TRADE_AMOUNT = 0.001
 EXIT_Z_THRESHOLD = 0.3
-STOP_LOSS_AMOUNT = STOP_LOSS_SPREAD_AMOUNT # Get from config
-MIN_SPREAD_PCT = 0.00001  # Lowered to 0.001% of price as minimum spread for arbitrage
 TRADE_COOLDOWN_SEC = 30  # Minimum seconds between trades per symbol
 last_trade_time = {sym: 0 for sym in ACTIVE_SYMBOLS}  # Only initialize for active symbols
 
@@ -78,48 +98,59 @@ class BookLevel(BaseModel):
     bid: float
     ask: float
 
+class PositionMetrics(BaseModel):
+    symbol: str
+    size: float
+    entry_price: float
+    current_price: float
+    unrealized_pnl: float
+    realized_pnl: float
+    duration: float
+    risk_score: float
+
+class PortfolioMetrics(BaseModel):
+    volatility: Dict[str, float]
+    correlations: Dict[str, Dict[str, float]]
+    var: Dict[str, float]
+    portfolio_var: float
+    sharpe_ratios: Dict[str, float]
+    max_drawdowns: Dict[str, float]
+
 class MarketDataResponse(BaseModel):
     timestamp: str
     symbol: str
-    binance: BookLevel
-    kraken: BookLevel
-    spread: float
-    z_score: Optional[float] = None # Z-score might not be available if not enough data
-    error: Optional[str] = None
+    bid_price: float
+    ask_price: float
+    mid_price: float
+    total_volume: float
+    signal: str = "HOLD"
+    trade_executed: bool = False
+    reason: str = "Initial state"
+    raw_zscore: Optional[float] = None
+    volume_weighted_zscore: Optional[float] = None
+    momentum_score: Optional[float] = None
+    correlation_filter: Optional[float] = None
+    volatility: Optional[float] = None
+    adaptive_threshold: Optional[float] = None
+    signal_strength: Optional[float] = None
 
-class TradeDetail(BaseModel):
-    timestamp: str # Assuming TradeSimulator records trades with timestamps
-    symbol: str
-    buy_exchange: str
-    buy_price: float
-    sell_exchange: str
-    sell_price: float
-    amount: float
-    pnl: float
-    # Add other fields from your simulator.trades if they exist e.g. fees
+class MarketDataAllResponse(BaseModel):
+    data: Dict[str, MarketDataResponse]
+    portfolio_pnl: float
 
 class SimulationStatusResponse(BaseModel):
     total_pnl: float
     total_trades: int
+    win_rate: float
+    avg_pnl_per_trade: float
+    total_fees_paid: float
     # Strategy Parameters
     z_score_threshold: float
     trade_amount: float
     exit_z_threshold: float
-    stop_loss_amount: float
 
 class RecentTradesResponse(BaseModel):
-    trades: List[TradeDetail]
-
-# New model for Sentiment
-class SentimentResponse(BaseModel):
-    symbol: str
-    sentiment_label: str = "neutral" # e.g., bullish, bearish, neutral
-    sentiment_score: float = 0.0 # e.g., range from -1.0 (very bearish) to 1.0 (very bullish)
-    source: str = "placeholder" # Indicates this is not from a live source yet
-    timestamp: Optional[str] = None # Timestamp when sentiment was assessed
-
-class MarketDataAllResponse(BaseModel):
-    data: Dict[str, MarketDataResponse]
+    trades: List[Dict[str, Any]]
 
 class LeaderboardEntry(BaseModel):
     symbol: str
@@ -129,172 +160,330 @@ class LeaderboardEntry(BaseModel):
 class LeaderboardResponse(BaseModel):
     leaderboard: List[LeaderboardEntry]
 
+class TradeDetail(BaseModel):
+    timestamp: str
+    symbol: str
+    buy_exchange: str
+    buy_price: float
+    sell_exchange: str
+    sell_price: float
+    amount: float
+    pnl: float
+
+# --- Background Trading Loop ---
+async def trading_loop():
+    logger.info("Background trading loop started.")
+    while True:
+        try:
+            for symbol in ACTIVE_SYMBOLS:
+                primary_ex = ARBITRAGE_EXCHANGES["primary"]
+                secondary_ex = ARBITRAGE_EXCHANGES["secondary"]
+                data_primary = await data_provider.get_market_data_rest(symbol, primary_ex)
+                data_secondary = await data_provider.get_market_data_rest(symbol, secondary_ex)
+                if not data_primary or not data_secondary:
+                    continue
+                bid_primary = float(data_primary['bid'])
+                ask_primary = float(data_primary['ask'])
+                bid_secondary = float(data_secondary['bid'])
+                ask_secondary = float(data_secondary['ask'])
+                vol_primary = float(data_primary.get('baseVolume', 0) or data_primary.get('volume', 0))
+                vol_secondary = float(data_secondary.get('baseVolume', 0) or data_secondary.get('volume', 0))
+                avg_volume = (vol_primary + vol_secondary) / 2
+                api_timestamp_str = data_primary['timestamp']
+                if 'Z' in api_timestamp_str:
+                    timestamp_dt = datetime.fromisoformat(api_timestamp_str.replace('Z', '+00:00'))
+                else:
+                    try:
+                        timestamp_dt = datetime.fromisoformat(api_timestamp_str)
+                    except ValueError:
+                        try:
+                            timestamp_dt = datetime.fromtimestamp(float(api_timestamp_str)/1000)
+                        except ValueError:
+                            timestamp_dt = datetime.utcnow()
+                # Calculate spread for signal processing
+                current_market_spread_for_signal = bid_primary - ask_secondary
+                signal_metrics = enhanced_signal_processors[symbol].update(
+                    spread=current_market_spread_for_signal,
+                    volume=avg_volume,
+                    timestamp=timestamp_dt
+                )
+                best_metrics = None
+                if signal_metrics:
+                    best_metrics = max(signal_metrics.values(), key=lambda x: x.signal_strength)
+                # Check cooldown
+                now = time.time()
+                if now - last_trade_time[symbol] < TRADE_COOLDOWN_SEC:
+                    continue
+                # Determine trading signal and simulate trade
+                if best_metrics and best_metrics.signal_strength >= best_metrics.threshold:
+                    if best_metrics.zscore > 0:
+                        profit = float(bid_primary) - float(ask_secondary)
+                        min_profit = TRADE_SETTINGS['thresholds']['min_profit_after_fees'].get(
+                            symbol, TRADE_SETTINGS['thresholds']['min_profit_after_fees']['default']
+                        )
+                        if profit >= min_profit:
+                            simulator.simulate_arbitrage_trade(
+                                symbol=symbol,
+                                amount=TRADE_AMOUNT,
+                                buy_exchange=secondary_ex,
+                                buy_price=ask_secondary,
+                                sell_exchange=primary_ex,
+                                sell_price=bid_primary,
+                                buy_fee_rate=FEES[secondary_ex]["taker"],
+                                sell_fee_rate=FEES[primary_ex]["taker"]
+                            )
+                            last_trade_time[symbol] = now
+                    else:
+                        profit = float(bid_secondary) - float(ask_primary)
+                        min_profit = TRADE_SETTINGS['thresholds']['min_profit_after_fees'].get(
+                            symbol, TRADE_SETTINGS['thresholds']['min_profit_after_fees']['default']
+                        )
+                        if profit >= min_profit:
+                            simulator.simulate_arbitrage_trade(
+                                symbol=symbol,
+                                amount=TRADE_AMOUNT,
+                                buy_exchange=primary_ex,
+                                buy_price=ask_primary,
+                                sell_exchange=secondary_ex,
+                                sell_price=bid_secondary,
+                                buy_fee_rate=FEES[primary_ex]["taker"],
+                                sell_fee_rate=FEES[secondary_ex]["taker"]
+                            )
+                            last_trade_time[symbol] = now
+        except Exception as e:
+            logger.error(f"Error in trading loop: {e}")
+        await asyncio.sleep(1)  # Check every second
+
 # --- API Endpoints ---
 @app.on_event("startup")
 async def startup_event():
-    # Initialize ZScore trackers for all known symbols from config
-    # This pre-populates them, so they start accumulating data if your design implies that.
-    # Alternatively, create them on-demand in the endpoint.
-    if ACTIVE_SYMBOLS:  # Changed from SYMBOLS to ACTIVE_SYMBOLS
-        for sym in ACTIVE_SYMBOLS:  # Changed from SYMBOLS to ACTIVE_SYMBOLS
-            if sym not in zscore_trackers:
-                zscore_trackers[sym] = RollingZScore(window_size=DEFAULT_ZSCORE_WINDOW)
+    """Initialize application state on startup."""
     logger.info("FastAPI application startup complete.")
-    if data_provider.error:
-        logger.warning(f"WARNING during startup: DataProvider had an initialization error: {data_provider.error}")
+    
+    # Initialize ZScore trackers for all symbols
+    for symbol in ACTIVE_SYMBOLS:
+        zscore_trackers[symbol] = RollingZScore(windows=[DEFAULT_ZSCORE_WINDOW])
+        enhanced_signal_processors[symbol] = EnhancedSignalProcessor(
+            symbol=symbol,
+            volatility_window=ENHANCED_SIGNAL_SETTINGS['volatility_window'],
+            correlation_window=ENHANCED_SIGNAL_SETTINGS['correlation_window'],
+            momentum_window=ENHANCED_SIGNAL_SETTINGS['momentum_window'],
+            signal_threshold=ENHANCED_SIGNAL_SETTINGS['signal_threshold'],
+            vol_impact=ENHANCED_SIGNAL_SETTINGS['vol_impact']
+        )
+    
+    # Initialize simulator parameters
+    simulator.update_settings(
+        z_score_threshold=Z_SCORE_THRESHOLD,
+        trade_amount=TRADE_AMOUNT,
+        exit_z_threshold=EXIT_Z_THRESHOLD
+    )
+    
+    # Start data generation
+    await data_provider.start_data_generation()
+    
+    # Initialize historical data for each symbol
+    for symbol in ACTIVE_SYMBOLS:
+        for exchange in [ARBITRAGE_EXCHANGES["primary"], ARBITRAGE_EXCHANGES["secondary"]]:
+            historical_data = await data_provider.get_historical_data(
+                symbol=symbol,
+                exchange_name=exchange,
+                timeframe="1m",
+                limit=100  # Get initial history
+            )
+            if historical_data is not None:
+                # Process historical data through signal processors
+                for _, row in historical_data.iterrows():
+                    spread = row['bid'] - row['ask']
+                    volume = row['volume']
+                    timestamp = row.name  # Index is timestamp
+                    enhanced_signal_processors[symbol].update(spread, volume, timestamp)
+    
+    # Start background trading loop
+    asyncio.create_task(trading_loop())
+    logger.info("All components initialized successfully.")
 
 @app.get("/api/v1/market_data/all", response_model=MarketDataAllResponse)
-async def get_market_data_all():
-    """
-    Return latest market data (including Z-score) for all symbols.
-    """
-    result = {}
-    for symbol in ACTIVE_SYMBOLS:  # Changed from SYMBOLS to ACTIVE_SYMBOLS
-        books = data_provider.get_top_of_book(symbol)
-        current_ts = pd.Timestamp.utcnow()
-        if not books:
-            result[symbol] = MarketDataResponse(
-                timestamp=current_ts.isoformat(),
-                symbol=symbol,
-                binance=BookLevel(bid=0, ask=0),
-                kraken=BookLevel(bid=0, ask=0),
-                spread=0,
-                error="Failed to fetch books."
+async def get_all_market_data():
+    all_data: Dict[str, MarketDataResponse] = {}
+    current_portfolio_pnl = 0.0 # This will be derived from simulator
+    
+    for symbol_pair in ACTIVE_SYMBOLS:
+        # This endpoint currently shows single-exchange data per symbol for the heatmap.
+        # For actual arbitrage, the /market_data/{symbol} endpoint handles dual exchange.
+        # Consider if this /all endpoint should also reflect arbitrage view or remains as is.
+        # For now, using primary exchange as representative for each symbol in the heatmap.
+        primary_exchange = ARBITRAGE_EXCHANGES.get("primary", "binance") # Default to binance if not set
+        data = await data_provider.get_market_data_rest(symbol_pair, primary_exchange)
+        
+        if not data or data.get('bid') is None or data.get('ask') is None:
+            logger.warning(f"No data or incomplete data for {symbol_pair} from {primary_exchange} in /all endpoint")
+            all_data[symbol_pair] = MarketDataResponse(
+                symbol=symbol_pair,
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                bid_price=0,
+                ask_price=0,
+                mid_price=0,
+                total_volume=0,
+                signal="ERROR",
+                reason=f"No data from {primary_exchange}",
+                raw_zscore=0.0,
+                volume_weighted_zscore=0.0,
+                momentum_score=0.0,
+                correlation_filter=0.0,
+                volatility=0.0,
+                adaptive_threshold=Z_SCORE_THRESHOLD,
+                signal_strength=0.0,
             )
             continue
-        bid_bin, ask_bin = books['binance']['bid'], books['binance']['ask']
-        bid_kr, ask_kr = books['kraken']['bid'], books['kraken']['ask']
-        spread = ask_bin - bid_kr
-        if symbol not in zscore_trackers:
-            zscore_trackers[symbol] = RollingZScore(window_size=DEFAULT_ZSCORE_WINDOW)
-        z_tracker = zscore_trackers[symbol]
-        current_z_score = z_tracker.add(spread)
-        result[symbol] = MarketDataResponse(
-            timestamp=current_ts.isoformat(),
-            symbol=symbol,
-            binance=BookLevel(bid=bid_bin, ask=ask_bin),
-            kraken=BookLevel(bid=bid_kr, ask=ask_kr),
-            spread=spread,
-            z_score=current_z_score
+
+        all_data[symbol_pair] = MarketDataResponse(
+            timestamp=data['timestamp'],
+            symbol=data['symbol'],
+            bid_price=data['bid'],
+            ask_price=data['ask'],
+            mid_price=data.get('mid_price', (data['bid'] + data['ask']) / 2),
+            total_volume=data.get('baseVolume', 0), # Ensure key matches what provider gives
+            raw_zscore=0.0,
+            volume_weighted_zscore=0.0,
+            momentum_score=0.0,
+            correlation_filter=0.0,
+            volatility=0.0,
+            adaptive_threshold=Z_SCORE_THRESHOLD,
+            signal_strength=0.0,
         )
-    return MarketDataAllResponse(data=result)
+
+    current_portfolio_pnl = simulator.total_pnl
+
+    return MarketDataAllResponse(data=all_data, portfolio_pnl=current_portfolio_pnl)
 
 @app.get("/api/v1/market_data/{symbol:path}", response_model=MarketDataResponse)
-async def get_market_data(symbol: str = Path(..., title="The symbol for the market data, e.g., BTC/USDT")):
-    """
-    Fetch the latest top-of-book market data, spread, and Z-score for a given symbol.
-    Checks for stop-loss conditions before checking for new trade entries.
-    Simulates trades based on Z-score if conditions are met.
-    """
-    if symbol not in SYMBOLS:
-        raise HTTPException(status_code=404, detail=f"Symbol '{symbol}' not configured or supported.")
+async def get_market_data(
+    symbol: str = Path(..., description="The symbol to get market data for, e.g., BTC/USDT")
+):
+    symbol = symbol.replace("%2F", "/").replace("%2f", "/")
+    
+    if symbol not in ACTIVE_SYMBOLS:
+        raise HTTPException(status_code=404, detail=f"Data for symbol {symbol} is not actively tracked or supported.")
 
-    current_ts = pd.Timestamp.utcnow()
-    books = data_provider.get_top_of_book(symbol)
+    primary_ex = ARBITRAGE_EXCHANGES["primary"]
+    secondary_ex = ARBITRAGE_EXCHANGES["secondary"]
 
-    if data_provider.error:
-        return MarketDataResponse(
-            timestamp=current_ts.isoformat(),
-            symbol=symbol,
-            binance=BookLevel(bid=0, ask=0),
-            kraken=BookLevel(bid=0, ask=0),
-            spread=0,
-            error=f"DataProvider error: {data_provider.error}"
-        )
-    if not books:
-        return MarketDataResponse(
-            timestamp=current_ts.isoformat(),
-            symbol=symbol,
-            binance=BookLevel(bid=0, ask=0),
-            kraken=BookLevel(bid=0, ask=0),
-            spread=0,
-            error="Failed to fetch books, no specific error from provider."
-        )
+    data_primary = await data_provider.get_market_data_rest(symbol, primary_ex)
+    data_secondary = await data_provider.get_market_data_rest(symbol, secondary_ex)
 
-    bid_bin, ask_bin = books['binance']['bid'], books['binance']['ask']
-    bid_kr, ask_kr   = books['kraken']['bid'],  books['kraken']['ask']
-    spread = ask_bin - bid_kr  # Current spread
+    if not data_primary or data_primary.get('bid') is None or data_primary.get('ask') is None:
+        logger.warning(f"No live data or incomplete data for {symbol} from {primary_ex}.")
+        raise HTTPException(status_code=404, detail=f"Market data not available for {symbol} on primary exchange {primary_ex}")
 
-    # Get or create ZScore tracker for the symbol
-    if symbol not in zscore_trackers:
-        zscore_trackers[symbol] = RollingZScore(window_size=DEFAULT_ZSCORE_WINDOW)
-    z_tracker = zscore_trackers[symbol]
-    current_z_score = z_tracker.add(spread)
+    if not data_secondary or data_secondary.get('bid') is None or data_secondary.get('ask') is None:
+        logger.warning(f"No live data or incomplete data for {symbol} from {secondary_ex}.")
+        raise HTTPException(status_code=404, detail=f"Market data not available for {symbol} on secondary exchange {secondary_ex}")
 
-    # --- New Arbitrage Logic: Spread-based ---
-    now = time.time()
-    min_spread = MIN_SPREAD_PCT * ((ask_bin + bid_kr) / 2)
-    can_trade_now = (now - last_trade_time[symbol]) > TRADE_COOLDOWN_SEC
-    entry_signal = False
-    trade_direction = 0
-    pnl = 0.0
-    entry_spread_for_trade = spread
+    bid_primary = float(data_primary['bid'])
+    ask_primary = float(data_primary['ask'])
+    vol_primary = float(data_primary.get('baseVolume', 0) or data_primary.get('volume', 0))
+    api_timestamp_str = data_primary['timestamp']
+    
+    if 'Z' in api_timestamp_str:
+        timestamp_dt = datetime.fromisoformat(api_timestamp_str.replace('Z', '+00:00'))
+    else:
+        try:
+            timestamp_dt = datetime.fromisoformat(api_timestamp_str)
+        except ValueError:
+            try:
+                timestamp_dt = datetime.fromtimestamp(float(api_timestamp_str)/1000)
+            except ValueError:
+                logger.error(f"Could not parse timestamp: {api_timestamp_str}")
+                timestamp_dt = datetime.utcnow()
 
-    # Debug logging for spread calculations
-    logger.info(f"[{symbol}] Spread: {spread:.6f}, min_spread: {min_spread:.6f}, ask_bin: {ask_bin}, bid_kr: {bid_kr}, bid_bin: {bid_bin}, ask_kr: {ask_kr}")
+    bid_secondary = float(data_secondary['bid'])
+    ask_secondary = float(data_secondary['ask'])
+    vol_secondary = float(data_secondary.get('baseVolume', 0) or data_secondary.get('volume', 0))
+    avg_volume = (vol_primary + vol_secondary) / 2
 
-    # Only consider entry if we don't have an active position and cooldown passed
-    if risk_manager.last_entry_spread is None and can_trade_now:
-        spread1 = bid_bin - ask_kr
-        spread2 = bid_kr - ask_bin
-        fee_bin = FEES['binance']['taker']
-        fee_kr = FEES['kraken']['taker']
-        eff_spread1 = spread1 - (ask_kr * fee_kr + bid_bin * fee_bin)
-        eff_spread2 = spread2 - (ask_bin * fee_bin + bid_kr * fee_kr)
-        logger.info(f"[{symbol}] spread1: {spread1:.6f}, eff_spread1: {eff_spread1:.6f}, spread2: {spread2:.6f}, eff_spread2: {eff_spread2:.6f}")
-        if eff_spread1 > min_spread:
-            entry_signal = True
-            trade_direction = 1
-            pnl = simulator.simulate_trade(symbol=symbol, buy_exchange='kraken', buy_price=ask_kr, sell_exchange='binance', sell_price=bid_bin, amount=TRADE_AMOUNT)
-        elif eff_spread2 > min_spread:
-            entry_signal = True
-            trade_direction = -1
-            pnl = simulator.simulate_trade(symbol=symbol, buy_exchange='binance', buy_price=ask_bin, sell_exchange='kraken', sell_price=bid_kr, amount=TRADE_AMOUNT)
-        if entry_signal:
-            risk_manager.register_trade(TRADE_AMOUNT, pnl, entry_spread=entry_spread_for_trade, direction=trade_direction)
-            last_trade_time[symbol] = now
-            logger.info(f"SPREAD ARB TRADE: {symbol}, Spread={spread:.4f}, EffSpread1={eff_spread1:.4f}, EffSpread2={eff_spread2:.4f}, PnL={pnl:.6f}, Dir={trade_direction}")
+    # Calculate spread for signal processing
+    current_market_spread_for_signal = bid_primary - ask_secondary
 
-    # --- Check for Exit Conditions or Stop-Loss ---
-    exit_condition_met = False
-    if risk_manager.last_entry_spread is not None:
-        stop_loss_hit = risk_manager.check_stop_loss(current_spread=spread)
-        if stop_loss_hit:
-            logger.info(f"STOP-LOSS triggered for {symbol} at spread {spread:.4f}. Risk state reset.")
-            exit_condition_met = True
-        else:
-            # Mean reversion exit (optional, can be based on spread or Z-score)
-            if risk_manager.last_trade_direction == 1 and current_z_score < EXIT_Z_THRESHOLD:
-                logger.info(f"EXIT Condition (Mean Reversion) met for {symbol} (Short Spread Entry). Z={current_z_score:.2f} < {EXIT_Z_THRESHOLD}. Resetting risk state.")
-                risk_manager.reset_entry_state()
-                exit_condition_met = True
-            elif risk_manager.last_trade_direction == -1 and current_z_score > -EXIT_Z_THRESHOLD:
-                logger.info(f"EXIT Condition (Mean Reversion) met for {symbol} (Long Spread Entry). Z={current_z_score:.2f} > {-EXIT_Z_THRESHOLD}. Resetting risk state.")
-                risk_manager.reset_entry_state()
-                exit_condition_met = True
-
-    return MarketDataResponse(
-        timestamp=current_ts.isoformat(),
-        symbol=symbol,
-        binance=BookLevel(bid=bid_bin, ask=ask_bin),
-        kraken=BookLevel(bid=bid_kr, ask=ask_kr),
-        spread=spread,
-        z_score=current_z_score
+    # Get signal metrics
+    signal_metrics = enhanced_signal_processors[symbol].update(
+        spread=current_market_spread_for_signal,
+        volume=avg_volume,
+        timestamp=timestamp_dt
     )
+
+    # Get the best signal metrics (highest signal strength)
+    best_metrics = None
+    if signal_metrics:
+        best_metrics = max(signal_metrics.values(), key=lambda x: x.signal_strength)
+
+    response_data = {
+        "symbol": symbol,
+        "timestamp": api_timestamp_str,
+        "bid_price": bid_primary,
+        "ask_price": ask_primary,
+        "mid_price": (bid_primary + ask_primary) / 2,
+        "total_volume": avg_volume,
+        "signal": "HOLD",
+        "trade_executed": False,
+        "reason": "No arbitrage opportunity or conditions not met.",
+        "raw_zscore": best_metrics.zscore if best_metrics else 0.0,
+        "volume_weighted_zscore": best_metrics.volume_weighted_zscore if best_metrics else 0.0,
+        "momentum_score": best_metrics.momentum_score if best_metrics else 0.0,
+        "correlation_filter": best_metrics.correlation_filter if best_metrics else 0.0,
+        "volatility": best_metrics.volatility if best_metrics else 0.0,
+        "adaptive_threshold": best_metrics.threshold if best_metrics else Z_SCORE_THRESHOLD,
+        "signal_strength": best_metrics.signal_strength if best_metrics else 0.0
+    }
+
+    # Determine trading signal
+    if best_metrics and best_metrics.signal_strength >= best_metrics.threshold:
+        # Calculate potential profit
+        if best_metrics.zscore > 0:
+            # Sell on primary, buy on secondary
+            profit = float(bid_primary) - float(ask_secondary)
+            min_profit = TRADE_SETTINGS['thresholds']['min_profit_after_fees'].get(
+                symbol, TRADE_SETTINGS['thresholds']['min_profit_after_fees']['default']
+            )
+            
+            if profit >= min_profit:
+                response_data["signal"] = "SELL_PRIMARY_BUY_SECONDARY"
+                response_data["trade_executed"] = True
+                response_data["reason"] = f"Strong sell signal on primary, buy on secondary. Z-score: {best_metrics.zscore:.2f}, Profit: {profit:.8f}"
+        else:
+            # Buy on primary, sell on secondary
+            profit = float(bid_secondary) - float(ask_primary)
+            min_profit = TRADE_SETTINGS['thresholds']['min_profit_after_fees'].get(
+                symbol, TRADE_SETTINGS['thresholds']['min_profit_after_fees']['default']
+            )
+            
+            if profit >= min_profit:
+                response_data["signal"] = "SELL_SECONDARY_BUY_PRIMARY"
+                response_data["trade_executed"] = True
+                response_data["reason"] = f"Strong buy signal on primary, sell on secondary. Z-score: {best_metrics.zscore:.2f}, Profit: {profit:.8f}"
+
+    return MarketDataResponse(**response_data)
 
 @app.get("/api/v1/simulation/status", response_model=SimulationStatusResponse)
 async def get_simulation_status():
     """
     Get the current status of the trade simulation (e.g., PnL, total trades).
     """
+    total_trades = len(simulator.trades)
+    winning_trades = sum(1 for trade in simulator.trades if trade.get('pnl', 0) > 0)
+    win_rate = (winning_trades / total_trades) * 100 if total_trades > 0 else 0.0
+    avg_pnl_per_trade = simulator.total_pnl / total_trades if total_trades > 0 else 0.0
+
     return SimulationStatusResponse(
         total_pnl=simulator.total_pnl,
-        total_trades=len(simulator.trades),
-        # Include the parameters used in the logic
+        total_trades=total_trades,
+        win_rate=win_rate,
+        avg_pnl_per_trade=avg_pnl_per_trade,
+        total_fees_paid=simulator.total_fees_paid,
+        # Strategy Parameters from main.py globals
         z_score_threshold=Z_SCORE_THRESHOLD,
-        trade_amount=TRADE_AMOUNT,
-        exit_z_threshold=EXIT_Z_THRESHOLD,
-        stop_loss_amount=STOP_LOSS_AMOUNT
+        trade_amount=TRADE_AMOUNT, # This is the global TRADE_AMOUNT
+        exit_z_threshold=EXIT_Z_THRESHOLD
     )
 
 @app.get("/api/v1/simulation/trades", response_model=RecentTradesResponse)
@@ -328,46 +517,22 @@ async def get_recent_trades(limit: int = 10):
                 else:
                     ts_obj = ts_obj.tz_convert('UTC')
                 timestamp_str = ts_obj.isoformat(timespec='milliseconds').replace('+00:00', 'Z')
-            # Add other potential types if necessary (e.g., datetime.datetime)
 
         except Exception as e:
             logger.error(f"Error formatting timestamp '{trade_timestamp}': {e}")
             # timestamp_str remains "Invalid Timestamp"
 
-        recent_trades.append(TradeDetail(
-            timestamp=timestamp_str,
-            symbol=trade_dict.get('symbol', 'N/A'),
-            buy_exchange=trade_dict.get('buy_exchange', 'N/A'),
-            buy_price=trade_dict.get('buy_price', 0.0),
-            sell_exchange=trade_dict.get('sell_exchange', 'N/A'),
-            sell_price=trade_dict.get('sell_price', 0.0),
-            amount=trade_dict.get('amount', 0.0),
-            pnl=trade_dict.get('pnl', 0.0)
-        ))
+        recent_trades.append({
+            "timestamp": timestamp_str,
+            "symbol": trade_dict.get('symbol', 'N/A'),
+            "buy_exchange": trade_dict.get('buy_exchange', 'N/A'),
+            "buy_price": trade_dict.get('buy_price', 0.0),
+            "sell_exchange": trade_dict.get('sell_exchange', 'N/A'),
+            "sell_price": trade_dict.get('sell_price', 0.0),
+            "amount": trade_dict.get('amount', 0.0),
+            "pnl": trade_dict.get('pnl', 0.0)
+        })
     return RecentTradesResponse(trades=recent_trades)
-
-# New endpoint for Sentiment (Placeholder)
-@app.get("/api/v1/sentiment/{symbol:path}", response_model=SentimentResponse)
-async def get_sentiment(symbol: str = Path(..., title="The symbol to get sentiment for, e.g., BTC/USDT")):
-    """
-    Placeholder endpoint for fetching news sentiment for a given symbol.
-    Currently returns a static neutral sentiment.
-    """
-    if symbol not in SYMBOLS:
-        raise HTTPException(status_code=404, detail=f"Sentiment analysis not available or symbol '{symbol}' not supported.")
-    
-    # In a real implementation, this would:
-    # 1. Fetch recent news/social media related to the symbol.
-    # 2. Call OpenAI API (or other model) to get sentiment.
-    # 3. Cache the result with a reasonable TTL.
-    
-    return SentimentResponse(
-        symbol=symbol,
-        sentiment_label="neutral", # Placeholder
-        sentiment_score=0.0,       # Placeholder
-        source="placeholder",
-        timestamp=pd.Timestamp.utcnow().isoformat(timespec='milliseconds').replace('+00:00', 'Z') # Current time
-    )
 
 @app.get("/api/v1/simulation/leaderboard", response_model=LeaderboardResponse)
 async def get_leaderboard():

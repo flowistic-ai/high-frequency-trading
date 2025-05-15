@@ -6,6 +6,12 @@ from dotenv import load_dotenv
 from streamlit_autorefresh import st_autorefresh
 import plotly.graph_objects as go # Import Plotly
 from plotly.subplots import make_subplots # For multiple y-axes if needed later
+import numpy as np
+from datetime import datetime, timedelta
+import json
+from typing import Dict, List
+import asyncio
+from dataclasses import dataclass
 
 from crypto_hft_tool.config import SYMBOLS # Ensure config.py has SYMBOLS and data_folder
 from crypto_hft_tool.signals import RollingZScore
@@ -227,3 +233,339 @@ if not df_trades.empty:
     m_cols[3].metric("Wins / Losses", f"{win_count} / {loss_count}")
 else:
     metrics_placeholder.info("Trade metrics will appear here once trades are simulated.")
+
+@dataclass
+class PerformanceMetrics:
+    total_pnl: float
+    trades_count: int
+    win_rate: float
+    sharpe_ratio: float
+    sortino_ratio: float
+    max_drawdown: float
+    avg_trade_duration: float
+    avg_slippage: float
+    avg_fill_ratio: float
+    avg_execution_time: float
+    avg_price_impact: float
+
+class DashboardApp:
+    def __init__(self):
+        st.set_page_config(
+            page_title="HFT Performance Dashboard",
+            page_icon="📈",
+            layout="wide"
+        )
+        
+        # Initialize session state
+        if 'history' not in st.session_state:
+            st.session_state.history = {
+                'timestamps': [],
+                'pnl': [],
+                'trades': [],
+                'signals': [],
+                'execution': []
+            }
+            
+    def _calculate_metrics(
+        self,
+        pnl_history: List[float],
+        trade_history: List[Dict]
+    ) -> PerformanceMetrics:
+        """Calculate performance metrics"""
+        if not pnl_history or not trade_history:
+            return PerformanceMetrics(
+                total_pnl=0.0,
+                trades_count=0,
+                win_rate=0.0,
+                sharpe_ratio=0.0,
+                sortino_ratio=0.0,
+                max_drawdown=0.0,
+                avg_trade_duration=0.0,
+                avg_slippage=0.0,
+                avg_fill_ratio=0.0,
+                avg_execution_time=0.0,
+                avg_price_impact=0.0
+            )
+            
+        # Calculate basic metrics
+        total_pnl = sum(pnl_history)
+        trades_count = len(trade_history)
+        
+        # Calculate returns
+        returns = np.diff(pnl_history)
+        if len(returns) < 2:
+            return PerformanceMetrics(
+                total_pnl=total_pnl,
+                trades_count=trades_count,
+                win_rate=0.0,
+                sharpe_ratio=0.0,
+                sortino_ratio=0.0,
+                max_drawdown=0.0,
+                avg_trade_duration=0.0,
+                avg_slippage=0.0,
+                avg_fill_ratio=0.0,
+                avg_execution_time=0.0,
+                avg_price_impact=0.0
+            )
+            
+        # Calculate win rate
+        wins = sum(1 for r in returns if r > 0)
+        win_rate = wins / len(returns)
+        
+        # Calculate Sharpe ratio (assuming risk-free rate = 0)
+        returns_mean = np.mean(returns)
+        returns_std = np.std(returns)
+        sharpe_ratio = returns_mean / returns_std if returns_std > 0 else 0
+        
+        # Calculate Sortino ratio
+        negative_returns = [r for r in returns if r < 0]
+        downside_std = np.std(negative_returns) if negative_returns else 0
+        sortino_ratio = returns_mean / downside_std if downside_std > 0 else 0
+        
+        # Calculate maximum drawdown
+        cumulative = np.cumsum(returns)
+        running_max = np.maximum.accumulate(cumulative)
+        drawdowns = cumulative - running_max
+        max_drawdown = abs(min(drawdowns)) if len(drawdowns) > 0 else 0
+        
+        # Calculate average trade metrics
+        avg_duration = np.mean([t.get('duration', 0) for t in trade_history])
+        avg_slippage = np.mean([t.get('slippage', 0) for t in trade_history])
+        avg_fill_ratio = np.mean([t.get('fill_ratio', 0) for t in trade_history])
+        avg_execution_time = np.mean([t.get('execution_time', 0) for t in trade_history])
+        avg_price_impact = np.mean([t.get('price_impact', 0) for t in trade_history])
+        
+        return PerformanceMetrics(
+            total_pnl=total_pnl,
+            trades_count=trades_count,
+            win_rate=win_rate,
+            sharpe_ratio=sharpe_ratio,
+            sortino_ratio=sortino_ratio,
+            max_drawdown=max_drawdown,
+            avg_trade_duration=avg_duration,
+            avg_slippage=avg_slippage,
+            avg_fill_ratio=avg_fill_ratio,
+            avg_execution_time=avg_execution_time,
+            avg_price_impact=avg_price_impact
+        )
+        
+    def _plot_pnl_chart(self, history: Dict):
+        """Plot PnL and drawdown chart"""
+        fig = make_subplots(
+            rows=2, cols=1,
+            shared_xaxes=True,
+            vertical_spacing=0.03,
+            subplot_titles=('Cumulative PnL', 'Drawdown')
+        )
+        
+        # Plot cumulative PnL
+        fig.add_trace(
+            go.Scatter(
+                x=history['timestamps'],
+                y=np.cumsum(history['pnl']),
+                name='Cumulative PnL',
+                line=dict(color='#2ecc71')
+            ),
+            row=1, col=1
+        )
+        
+        # Calculate and plot drawdown
+        cumulative = np.cumsum(history['pnl'])
+        running_max = np.maximum.accumulate(cumulative)
+        drawdown = (cumulative - running_max) / running_max * 100
+        
+        fig.add_trace(
+            go.Scatter(
+                x=history['timestamps'],
+                y=drawdown,
+                name='Drawdown %',
+                line=dict(color='#e74c3c')
+            ),
+            row=2, col=1
+        )
+        
+        fig.update_layout(
+            height=600,
+            showlegend=True,
+            title_text="Performance Overview"
+        )
+        
+        return fig
+        
+    def _plot_execution_metrics(self, history: Dict):
+        """Plot execution quality metrics"""
+        fig = make_subplots(
+            rows=2, cols=2,
+            subplot_titles=(
+                'Slippage Distribution',
+                'Fill Ratio Distribution',
+                'Execution Time Distribution',
+                'Price Impact Distribution'
+            )
+        )
+        
+        # Plot distributions
+        metrics = [
+            ('slippage', 1, 1),
+            ('fill_ratio', 1, 2),
+            ('execution_time', 2, 1),
+            ('price_impact', 2, 2)
+        ]
+        
+        for metric, row, col in metrics:
+            if metric in history['execution'] and len(history['execution'][metric]) > 0:
+                fig.add_trace(
+                    go.Histogram(
+                        x=history['execution'][metric],
+                        name=metric.replace('_', ' ').title(),
+                        nbinsx=30
+                    ),
+                    row=row, col=col
+                )
+                
+        fig.update_layout(
+            height=600,
+            showlegend=True,
+            title_text="Execution Quality Metrics"
+        )
+        
+        return fig
+        
+    def _plot_signal_metrics(self, history: Dict):
+        """Plot signal quality metrics"""
+        fig = make_subplots(
+            rows=2, cols=2,
+            subplot_titles=(
+                'Signal Strength Distribution',
+                'Signal Success Rate',
+                'False Signals',
+                'Signal Latency'
+            )
+        )
+        
+        # Plot signal strength distribution
+        if 'strength' in history['signals']:
+            fig.add_trace(
+                go.Histogram(
+                    x=history['signals']['strength'],
+                    name='Signal Strength',
+                    nbinsx=30
+                ),
+                row=1, col=1
+            )
+            
+        # Plot success rate over time
+        if 'success' in history['signals']:
+            success_rate = [
+                sum(history['signals']['success'][:i+1]) / (i+1)
+                for i in range(len(history['signals']['success']))
+            ]
+            fig.add_trace(
+                go.Scatter(
+                    x=history['timestamps'][-len(success_rate):],
+                    y=success_rate,
+                    name='Success Rate'
+                ),
+                row=1, col=2
+            )
+            
+        # Plot false signals
+        if 'false_signals' in history['signals']:
+            fig.add_trace(
+                go.Scatter(
+                    x=history['timestamps'][-len(history['signals']['false_signals']):],
+                    y=history['signals']['false_signals'],
+                    name='False Signals'
+                ),
+                row=2, col=1
+            )
+            
+        # Plot signal latency
+        if 'latency' in history['signals']:
+            fig.add_trace(
+                go.Box(
+                    y=history['signals']['latency'],
+                    name='Signal Latency'
+                ),
+                row=2, col=2
+            )
+            
+        fig.update_layout(
+            height=600,
+            showlegend=True,
+            title_text="Signal Quality Metrics"
+        )
+        
+        return fig
+        
+    def run(self):
+        """Run the dashboard"""
+        st.title("High-Frequency Trading Dashboard")
+        
+        # Sidebar controls
+        st.sidebar.header("Controls")
+        time_window = st.sidebar.selectbox(
+            "Time Window",
+            ["1H", "4H", "12H", "1D", "1W", "ALL"],
+            index=2
+        )
+        
+        update_interval = st.sidebar.slider(
+            "Update Interval (seconds)",
+            min_value=1,
+            max_value=60,
+            value=5
+        )
+        
+        # Main metrics
+        st.header("Performance Metrics")
+        metrics = self._calculate_metrics(
+            st.session_state.history['pnl'],
+            st.session_state.history['trades']
+        )
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("Total PnL", f"${metrics.total_pnl:.2f}")
+            st.metric("Win Rate", f"{metrics.win_rate:.1%}")
+            
+        with col2:
+            st.metric("Sharpe Ratio", f"{metrics.sharpe_ratio:.2f}")
+            st.metric("Sortino Ratio", f"{metrics.sortino_ratio:.2f}")
+            
+        with col3:
+            st.metric("Max Drawdown", f"{metrics.max_drawdown:.1%}")
+            st.metric("Total Trades", metrics.trades_count)
+            
+        with col4:
+            st.metric("Avg Slippage", f"{metrics.avg_slippage:.4%}")
+            st.metric("Avg Fill Ratio", f"{metrics.avg_fill_ratio:.1%}")
+            
+        # Charts
+        st.plotly_chart(
+            self._plot_pnl_chart(st.session_state.history),
+            use_container_width=True
+        )
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.plotly_chart(
+                self._plot_execution_metrics(st.session_state.history),
+                use_container_width=True
+            )
+            
+        with col2:
+            st.plotly_chart(
+                self._plot_signal_metrics(st.session_state.history),
+                use_container_width=True
+            )
+            
+        # Auto-refresh
+        st.empty()
+        st.experimental_rerun()
+        
+if __name__ == "__main__":
+    app = DashboardApp()
+    app.run()
