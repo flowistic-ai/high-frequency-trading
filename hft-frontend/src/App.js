@@ -237,23 +237,6 @@ function AppContent() { // Renamed original App to AppContent
     }
   };
 
-  const tradesTicker = (
-    <div className="live-trades-ticker">
-      <h2>Live Trades</h2>
-      <div className="ticker-content" style={{ overflowX: 'auto', whiteSpace: 'nowrap', border: '1px solid #ccc', padding: '5px' }}>
-        {recentTrades && recentTrades.length > 0 ? (
-          recentTrades.map((trade, index) => (
-            <span key={index} style={{ marginRight: '20px' }}>
-              {trade.symbol} {trade.buy_exchange} &gt; {trade.sell_exchange} @ {trade.sell_price?.toFixed(4) || 'N/A'} (PnL: {trade.pnl?.toFixed(6) || 'N/A'})
-            </span>
-          ))
-        ) : (
-          <span>No live trades yet...</span>
-        )}
-      </div>
-    </div>
-  );
-
   const leaderboardTable = (
     <div className="leaderboard-section">
       <h2>Leaderboard</h2>
@@ -327,73 +310,6 @@ function AppContent() { // Renamed original App to AppContent
     </div>
   );
 
-  const zScoreHeatmap = (
-    <div className="zscore-heatmap-section">
-      <h2>Signal Heatmap</h2>
-      <div className="zscore-heatmap-legend">
-        <div className="zscore-legend-box"><span className="zscore-legend-color" style={{background:'#ff6666'}}></span>Strong Sell Signal</div>
-        <div className="zscore-legend-box"><span className="zscore-legend-color" style={{background:'#ffe066'}}></span>Weak Sell Signal</div>
-        <div className="zscore-legend-box"><span className="zscore-legend-color" style={{background:'#b2f7ef'}}></span>Hold / Neutral</div>
-        <div className="zscore-legend-box"><span className="zscore-legend-color" style={{background:'#66b3ff'}}></span>Weak Buy Signal</div>
-        <div className="zscore-legend-box"><span className="zscore-legend-color" style={{background:'#3385ff'}}></span>Strong Buy Signal</div>
-      </div>
-      <div className="zscore-heatmap-grid">
-        {SYMBOLS.map(sym => {
-          const data = allMarketData && allMarketData[sym];
-          const rawZ = data?.raw_zscore;
-          const strength = data?.signal_strength;
-          const threshold = data?.adaptive_threshold;
-          let bg = '#b2f7ef'; // Neutral
-          let textColor = '#222';
-
-          if (typeof strength === 'number' && typeof threshold === 'number' && typeof rawZ === 'number') {
-            if (strength >= threshold) { // Potential signal
-              if (rawZ < 0) { // Buy signal potential
-                bg = strength >= threshold * 1.5 ? '#3385ff' : '#66b3ff'; // Stronger if 1.5x threshold
-                textColor = '#fff';
-              } else { // Sell signal potential
-                bg = strength >= threshold * 1.5 ? '#ff6666' : '#ffe066';
-                textColor = strength >= threshold * 1.5 ? '#fff' : '#222';
-              }
-            } else { // No strong signal, color by Z-score direction if desired, or keep neutral
-              // Optional: color based on raw Z for non-signal states
-              // if (rawZ > 1.0) bg = '#ffe0cc'; // Mildly positive Z
-              // else if (rawZ < -1.0) bg = '#cce0ff'; // Mildly negative Z
-            }
-          }
-          
-          return (
-            <div
-              key={sym}
-              className="zscore-heatmap-cell"
-              style={{ background: bg, color: textColor, border: sym === selectedSymbol ? '2px solid #0197ae' : '1px solid #ccc' }}
-              onClick={() => setSelectedSymbol(sym)}
-            >
-              <div style={{ fontSize: 13, fontWeight: 'bold' }}>{sym}</div>
-              <div style={{ fontSize: 12, marginTop: '3px' }}>
-                {data ? (
-                  <>
-                    <div>Z: {rawZ?.toFixed(2) ?? 'N/A'}</div>
-                    <div>Str: {strength?.toFixed(2) ?? 'N/A'}</div>
-                    <div>Thr: {threshold?.toFixed(2) ?? 'N/A'}</div>
-                  </>
-                ) : 'Loading...'}
-              </div>
-              <div className="zscore-tooltip">
-                {sym}: Click to view details<br/>
-                Raw Z: {rawZ?.toFixed(3) ?? 'N/A'}<br/>
-                Signal Strength: {strength?.toFixed(3) ?? 'N/A'}<br/>
-                Adaptive Threshold: {threshold?.toFixed(3) ?? 'N/A'}<br/>
-                Momentum: {data?.momentum_score?.toFixed(3) ?? 'N/A'}<br/>
-                Signal: {data?.signal ?? 'N/A'} 
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-
   return (
     <div className="App">
       {errorDisplay}
@@ -422,9 +338,7 @@ function AppContent() { // Renamed original App to AppContent
         </p>
       </header>
       <main className="App-main dashboard-container">
-        {tradesTicker}
         {leaderboardTable}
-        {zScoreHeatmap}
         <div className="status-metrics-section">
           {isLoading && <p>Loading data...</p>}
           {combinedError && <p className="error-message">Error fetching data: {combinedError.message}</p>}
