@@ -314,192 +314,216 @@ function AppContent() { // Renamed original App to AppContent
     <div className="App">
       {errorDisplay}
       {loadingDisplay}
-      {dataValidationDisplay}
-      <header className="App-header">
-        <div className="App-logo-container">
-          <img src={process.env.PUBLIC_URL + '/flowistic-logo.png'} className="App-logo" alt="Flowistic Logo" />
-          <h1>Crypto HFT Dashboard</h1>
-        </div>
-        <div style={{ margin: '10px 0' }}>
-          <label htmlFor="symbol-select" style={{ color: '#0197ae', fontWeight: 600, marginRight: 8 }}>Symbol:</label>
-          <select
-            id="symbol-select"
-            value={selectedSymbol}
-            onChange={e => setSelectedSymbol(e.target.value)}
-            style={{ fontSize: '1rem', padding: '4px 10px', borderRadius: 4, border: '1px solid #0197ae', color: '#0197ae', background: '#f8f2eb', fontWeight: 600 }}
-          >
-            {SYMBOLS.map(sym => (
-              <option key={sym} value={sym}>{sym}</option>
-            ))}
-          </select>
-        </div>
-        <p style={{fontSize: '1rem', fontWeight: 'normal', margin: '5px 0 0 0'}}>
-          Displaying: {selectedSymbol}
-        </p>
-      </header>
-      <main className="App-main dashboard-container">
-        {leaderboardTable}
-        <div className="status-metrics-section">
-          {isLoading && <p>Loading data...</p>}
-          {combinedError && <p className="error-message">Error fetching data: {combinedError.message}</p>}
-          {!isLoading && !combinedError && marketData && !marketData.error && <p className="status-ok">Live Data Feed Running</p>}
-          {marketData?.error && <p className="error-message">Provider Error for {selectedSymbol}: {marketData.error}</p>}
-
-          <div className="metrics-container">
-              {simulationStatus ? (
-                <>
-                  <div className="metric-item"><span>Total PnL:</span> {simulationStatus.total_pnl?.toFixed(6)}</div>
-                  <div className="metric-item"><span>Total Trades:</span> {simulationStatus.total_trades}</div>
-                  <div className="metric-item"><span>Win Rate:</span> {simulationStatus.win_rate?.toFixed(2)}%</div>
-                  <div className="metric-item"><span>Avg PnL/Trade:</span> {simulationStatus.avg_pnl_per_trade?.toFixed(6)}</div>
-                  <div className="metric-item"><span>Total Fees:</span> {simulationStatus.total_fees_paid?.toFixed(6)}</div>
-                </>
-              ) : <div className="metric-item">Loading PnL status...</div> }
+      <div className="dashboard-container">
+        {/* Header and Symbol Selector */}
+        <header className="App-header">
+          <div className="App-logo-container">
+            <img src={process.env.PUBLIC_URL + '/flowistic-logo.png'} className="App-logo" alt="Flowistic Logo" />
+            <h1>Crypto HFT Dashboard</h1>
           </div>
-        </div>
-
-        <div className="chart-section chart-section-prices">
-          {history.timestamp.length > 0 ? (
-            <Plot
-              data={[
-                {
-                  x: history.timestamp,
-                  y: history.mid_price,
-                  type: 'scatter',
-                  mode: 'lines',
-                  name: 'Mid Price',
-                  line: { color: '#01DBB0', width: 2 },
-                  hoverinfo: 'x+y'
-                }
-              ]}
-              layout={{
-                ...commonLayout,
-                title: {
-                  text: `Market Prices for ${selectedSymbol}`,
-                  font: { color: '#ffffff' }
-                },
-                hovermode: 'x unified',
-                yaxis: {
-                  ...commonLayout.yaxis,
-                  title: 'Price (USDT)',
-                }
-              }}
-              style={{ width: '100%', height: '400px' }}
-              useResizeHandler={true}
-              config={{
-                displayModeBar: true,
-                responsive: true,
-                displaylogo: false,
-                modeBarButtonsToRemove: ['lasso2d', 'select2d']
-              }}
-            />
-          ) : (
-            <div className="loading-message">
-              Waiting for price data for {selectedSymbol}...
-            </div>
-          )}
-        </div>
-
-        <div className="chart-section chart-section-signals">
-          {history.timestamp.length > 0 ? (
-            <Plot
-              data={[
-                {
-                  x: history.timestamp,
-                  y: history.raw_zscore,
-                  type: 'scatter',
-                  mode: 'lines',
-                  name: 'Z-Score',
-                  line: { color: '#FFD700', width: 2 },
-                  hoverinfo: 'x+y'
-                },
-                {
-                  x: history.timestamp,
-                  y: history.signal_strength,
-                  type: 'scatter',
-                  mode: 'lines',
-                  name: 'Signal Strength',
-                  line: { color: '#0197ae', width: 2 },
-                  hoverinfo: 'x+y'
-                },
-                {
-                  x: history.timestamp,
-                  y: history.adaptive_threshold,
-                  type: 'scatter',
-                  mode: 'lines',
-                  name: 'Adaptive Threshold',
-                  line: { color: '#ff6b6b', width: 2, dash: 'dash' },
-                  hoverinfo: 'x+y'
-                }
-              ]}
-              layout={{
-                ...commonLayout,
-                title: {
-                  text: `Trading Signals for ${selectedSymbol}`,
-                  font: { color: '#ffffff' }
-                },
-                hovermode: 'x unified',
-                yaxis: {
-                  ...commonLayout.yaxis,
-                  title: 'Signal Values',
-                  zeroline: true,
-                  zerolinecolor: '#666666'
-                }
-              }}
-              style={{ width: '100%', height: '400px' }}
-              useResizeHandler={true}
-              config={{
-                displayModeBar: true,
-                responsive: true,
-                displaylogo: false,
-                modeBarButtonsToRemove: ['lasso2d', 'select2d']
-              }}
-            />
-          ) : (
-            <div className="loading-message">
-              Waiting for signal data for {selectedSymbol}...
-            </div>
-          )}
-        </div>
-
-        <div className="trades-section">
-          <h2>Recent Trades</h2>
-          {recentTrades && recentTrades.length > 0 ? (
-            <div className="trades-table-container">
-              <table className="trades-table">
-                <thead>
-                  <tr>
-                    <th>Timestamp</th>
-                    <th>Symbol</th>
-                    <th>Buy Exchange</th>
-                    <th>Buy Price</th>
-                    <th>Sell Exchange</th>
-                    <th>Sell Price</th>
-                    <th>Amount</th>
-                    <th>PnL</th>
-                  </tr>
-                </thead>
+          <div style={{ margin: '10px 0' }}>
+            <label htmlFor="symbol-select" style={{ color: '#0197ae', fontWeight: 600, marginRight: 8 }}>Symbol:</label>
+            <select
+              id="symbol-select"
+              value={selectedSymbol}
+              onChange={e => setSelectedSymbol(e.target.value)}
+              style={{ fontSize: '1rem', padding: '4px 10px', borderRadius: 4, border: '1px solid #0197ae', color: '#0197ae', background: '#f8f2eb', fontWeight: 600 }}
+            >
+              {SYMBOLS.map(sym => (
+                <option key={sym} value={sym}>{sym}</option>
+              ))}
+            </select>
+          </div>
+          <p style={{fontSize: '1rem', fontWeight: 'normal', margin: '5px 0 0 0'}}>
+            Displaying: {selectedSymbol}
+          </p>
+        </header>
+        {/* Main Content Area - Single Column Layout */}
+        <main className="main-content-stacked">
+          {/* Leaderboard Section */}
+          <section className="dashboard-section leaderboard-section">
+            {leaderboardTable} 
+          </section>
+          {/* Live Data Feed / Metrics Section */}
+          <section className="dashboard-section status-metrics-section">
+            <h2>Live Data Feed</h2> {/* Title for the section */}
+            {isLoading && <p>Loading data...</p>}
+            {combinedError && <p className="error-message">Error fetching data: {combinedError.message}</p>}
+            {!isLoading && !combinedError && marketData && !marketData.error && <p className="status-ok">Feed Running</p>}
+            {marketData?.error && <p className="error-message">Provider Error for {selectedSymbol}: {marketData.error}</p>}
+            {/* Restructure metrics into a table format */}
+            {simulationStatus ? (
+              <table className="metrics-table">
                 <tbody>
-                  {recentTrades.map((trade, index) => (
-                    <tr key={index}>
-                      <td>{new Date(trade.timestamp).toLocaleString()}</td>
-                      <td>{trade.symbol}</td>
-                      <td>{trade.buy_exchange}</td>
-                      <td>{trade.buy_price?.toFixed(2)}</td>
-                      <td>{trade.sell_exchange}</td>
-                      <td>{trade.sell_price?.toFixed(2)}</td>
-                      <td>{trade.amount}</td>
-                      <td className={trade.pnl > 0 ? 'pnl-positive' : trade.pnl < 0 ? 'pnl-negative' : ''}>{trade.pnl?.toFixed(6)}</td>
-                    </tr>
-                  ))}
+                  <tr><td>Total PnL:</td><td>{simulationStatus.total_pnl?.toFixed(6)}</td></tr>
+                  <tr><td>Total Trades:</td><td>{simulationStatus.total_trades}</td></tr>
+                  <tr><td>Win Rate:</td><td>{simulationStatus.win_rate?.toFixed(2)}%</td></tr>
+                  <tr><td>Avg PnL/Trade:</td><td>{simulationStatus.avg_pnl_per_trade?.toFixed(6)}</td></tr>
+                  <tr><td>Total Fees:</td><td>{simulationStatus.total_fees_paid?.toFixed(6)}</td></tr>
                 </tbody>
               </table>
-            </div>
-          ) : (
-            <p>No recent trades.</p>
+            ) : <p>Loading PnL status...</p> }
+          </section>
+          {/* Data Validation Card - In Table Format */}
+          {marketData && (
+            <section className="dashboard-section data-validation-table-section">
+              <h2>Data Validation</h2> {/* Title for the section */}
+              <table className="data-validation-table">
+                <tbody>
+                  <tr><td>Symbol:</td><td>{marketData.symbol}</td></tr>
+                  <tr><td>Timestamp:</td><td>{marketData.timestamp}</td></tr>
+                  <tr><td>Mid Price:</td><td>{marketData.mid_price?.toFixed(2) || 'N/A'}</td></tr>
+                  <tr><td>Signal:</td><td>{marketData.signal}</td></tr>
+                  <tr><td>Signal Strength:</td><td>{marketData.signal_strength?.toFixed(2) || 'N/A'}</td></tr>
+                  <tr><td>Z-Score:</td><td>{marketData.raw_zscore?.toFixed(2) || 'N/A'}</td></tr>
+                </tbody>
+              </table>
+            </section>
           )}
-        </div>
-      </main>
+          {/* Price Chart */}
+          <section className="dashboard-section chart-section chart-section-prices">
+            {history.timestamp.length > 0 ? (
+              <Plot
+                data={[
+                  {
+                    x: history.timestamp,
+                    y: history.mid_price,
+                    type: 'scatter',
+                    mode: 'lines',
+                    name: 'Mid Price',
+                    line: { color: '#01DBB0', width: 2 },
+                    hoverinfo: 'x+y'
+                  }
+                ]}
+                layout={{
+                  ...commonLayout,
+                  title: {
+                    text: `Market Prices for ${selectedSymbol}`,
+                    font: { color: '#ffffff' }
+                  },
+                  hovermode: 'x unified',
+                  yaxis: {
+                    ...commonLayout.yaxis,
+                    title: 'Price (USDT)',
+                  }
+                }}
+                style={{ width: '100%', height: '400px' }}
+                useResizeHandler={true}
+                config={{
+                  displayModeBar: true,
+                  responsive: true,
+                  displaylogo: false,
+                  modeBarButtonsToRemove: ['lasso2d', 'select2d']
+                }}
+              />
+            ) : (
+              <div className="loading-message">
+                Waiting for price data for ${selectedSymbol}...
+              </div>
+            )}
+          </section>
+          {/* Signals Chart */}
+          <section className="dashboard-section chart-section chart-section-signals">
+            {history.timestamp.length > 0 ? (
+              <Plot
+                data={[
+                  {
+                    x: history.timestamp,
+                    y: history.raw_zscore,
+                    type: 'scatter',
+                    mode: 'lines',
+                    name: 'Z-Score',
+                    line: { color: '#FFD700', width: 2 },
+                    hoverinfo: 'x+y'
+                  },
+                  {
+                    x: history.timestamp,
+                    y: history.signal_strength,
+                    type: 'scatter',
+                    mode: 'lines',
+                    name: 'Signal Strength',
+                    line: { color: '#0197ae', width: 2 },
+                    hoverinfo: 'x+y'
+                  },
+                  {
+                    x: history.timestamp,
+                    y: history.adaptive_threshold,
+                    type: 'scatter',
+                    mode: 'lines',
+                    name: 'Adaptive Threshold',
+                    line: { color: '#ff6b6b', width: 2, dash: 'dash' },
+                    hoverinfo: 'x+y'
+                  }
+                ]}
+                layout={{
+                  ...commonLayout,
+                  title: {
+                    text: `Trading Signals for ${selectedSymbol}`,
+                    font: { color: '#ffffff' }
+                  },
+                  hovermode: 'x unified',
+                  yaxis: {
+                    ...commonLayout.yaxis,
+                    title: 'Signal Values',
+                    zeroline: true,
+                    zerolinecolor: '#666666'
+                  }
+                }}
+                style={{ width: '100%', height: '400px' }}
+                useResizeHandler={true}
+                config={{
+                  displayModeBar: true,
+                  responsive: true,
+                  displaylogo: false,
+                  modeBarButtonsToRemove: ['lasso2d', 'select2d']
+                }}
+              />
+            ) : (
+              <div className="loading-message">
+                Waiting for signal data for ${selectedSymbol}...
+              </div>
+            )}
+          </section>
+          {/* Recent Trades Section */}
+          <section className="dashboard-section trades-section">
+            <h2>Recent Trades</h2>
+            {recentTrades && recentTrades.length > 0 ? (
+              <div className="trades-table-container">
+                <table className="trades-table">
+                  <thead>
+                    <tr>
+                      <th>Timestamp</th>
+                      <th>Symbol</th>
+                      <th>Buy Exchange</th>
+                      <th>Buy Price</th>
+                      <th>Sell Exchange</th>
+                      <th>Sell Price</th>
+                      <th>Amount</th>
+                      <th>PnL</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentTrades.map((trade, index) => (
+                      <tr key={index}>
+                        <td>{new Date(trade.timestamp).toLocaleString()}</td>
+                        <td>{trade.symbol}</td>
+                        <td>{trade.buy_exchange}</td>
+                        <td>{trade.buy_price?.toFixed(2)}</td>
+                        <td>{trade.sell_exchange}</td>
+                        <td>{trade.sell_price?.toFixed(2)}</td>
+                        <td>{trade.amount}</td>
+                        <td className={trade.pnl > 0 ? 'pnl-positive' : trade.pnl < 0 ? 'pnl-negative' : ''}>{trade.pnl?.toFixed(6)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p>No recent trades.</p>
+            )}
+          </section>
+        </main>
+      </div>
     </div>
   );
 }
