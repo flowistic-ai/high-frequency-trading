@@ -167,6 +167,7 @@ function App() {
       </div>
       <div className="zscore-heatmap-grid">
         {SYMBOLS.map(sym => {
+          // eslint-disable-next-line no-unused-vars
           const z = allMarketData[sym]?.z_score;
           let bg = '#b2f7ef';
           if (typeof z === 'number') {
