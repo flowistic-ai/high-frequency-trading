@@ -4,8 +4,8 @@ import './App.css';
 import axios from 'axios';
 import { QueryClient, QueryClientProvider, useQuery } from 'react-query';
 
-// Use local backend for development
-const API_BASE_URL = 'http://localhost:8000'; // Ensure no trailing slash if /api/v1 is in paths
+// Use environment variable for API base URL, defaulting to local for development
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
 const SYMBOLS = [
   "BTC/USDT", "ETH/USDT"
 ];
