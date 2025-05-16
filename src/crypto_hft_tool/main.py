@@ -10,7 +10,7 @@ import asyncio
 print(">>> RUNNING main.py FROM:", __file__)
 
 # Update imports to use new class names
-from .data_provider import BaseDataProvider, SimulatedSingleExchangeDataProvider, CCXTSingleExchangeDataProvider
+from .data_provider import BaseDataProvider, SimulatedSingleExchangeDataProvider
 from .signals import RollingZScore
 from .simulation import TradeSimulator
 # from .risk_manager import RiskManager # Removed
@@ -48,20 +48,8 @@ app.add_middleware(
 # In a production app, consider more robust state management or dependency injection.
 
 # Initialize DataProvider based on mode
-data_provider: BaseDataProvider
-if DATA_PROVIDER_MODE == "simulated":
-    data_provider = SimulatedSingleExchangeDataProvider(symbols=SYMBOLS)
-    logger.info("Using SimulatedSingleExchangeDataProvider.")
-elif DATA_PROVIDER_MODE == "ccxt":
-    data_provider = CCXTSingleExchangeDataProvider(symbols=SYMBOLS)
-    logger.info("Using CCXTSingleExchangeDataProvider.")
-else:
-    logger.error("Invalid DATA_PROVIDER_MODE. Exiting.")
-    exit(1)
-
-if data_provider.error:
-    logger.critical(f"CRITICAL: DataProvider failed to initialize: {data_provider.error}")
-    # You might want to prevent the app from starting or enter a degraded state
+data_provider: BaseDataProvider = SimulatedSingleExchangeDataProvider(symbols=SYMBOLS)
+logger.info("Using SimulatedSingleExchangeDataProvider.")
 
 # Store ZScore trackers per symbol
 # We need a default window size for RollingZScore if not dynamically configured per symbol via API
@@ -136,7 +124,7 @@ class MarketDataResponse(BaseModel):
 
 class MarketDataAllResponse(BaseModel):
     data: Dict[str, MarketDataResponse]
-    portfolio_pnl: float
+    portfolio_pnl: float = 0.0
 
 class SimulationStatusResponse(BaseModel):
     total_pnl: float
@@ -303,166 +291,50 @@ async def startup_event():
     asyncio.create_task(trading_loop())
     logger.info("All components initialized successfully.")
 
+@app.get("/")
+async def read_root():
+    return {"message": "Welcome to Crypto HFT Tool API"}
+
 @app.get("/api/v1/market_data/all", response_model=MarketDataAllResponse)
 async def get_all_market_data():
-    all_data: Dict[str, MarketDataResponse] = {}
-    current_portfolio_pnl = 0.0 # This will be derived from simulator
-    
-    for symbol_pair in ACTIVE_SYMBOLS:
-        # This endpoint currently shows single-exchange data per symbol for the heatmap.
-        # For actual arbitrage, the /market_data/{symbol} endpoint handles dual exchange.
-        # Consider if this /all endpoint should also reflect arbitrage view or remains as is.
-        # For now, using primary exchange as representative for each symbol in the heatmap.
-        primary_exchange = ARBITRAGE_EXCHANGES.get("primary", "binance") # Default to binance if not set
-        data = await data_provider.get_market_data_rest(symbol_pair, primary_exchange)
-        
-        if not data or data.get('bid') is None or data.get('ask') is None:
-            logger.warning(f"No data or incomplete data for {symbol_pair} from {primary_exchange} in /all endpoint")
-            all_data[symbol_pair] = MarketDataResponse(
-                symbol=symbol_pair,
-                timestamp=datetime.now(timezone.utc).isoformat(),
-                bid_price=0,
-                ask_price=0,
-                mid_price=0,
-                total_volume=0,
-                signal="ERROR",
-                reason=f"No data from {primary_exchange}",
-                raw_zscore=0.0,
-                volume_weighted_zscore=0.0,
-                momentum_score=0.0,
-                correlation_filter=0.0,
-                volatility=0.0,
-                adaptive_threshold=Z_SCORE_THRESHOLD,
-                signal_strength=0.0,
-            )
-            continue
-
-        all_data[symbol_pair] = MarketDataResponse(
-            timestamp=data['timestamp'],
-            symbol=data['symbol'],
-            bid_price=data['bid'],
-            ask_price=data['ask'],
-            mid_price=data.get('mid_price', (data['bid'] + data['ask']) / 2),
-            total_volume=data.get('baseVolume', 0), # Ensure key matches what provider gives
-            raw_zscore=0.0,
-            volume_weighted_zscore=0.0,
-            momentum_score=0.0,
-            correlation_filter=0.0,
-            volatility=0.0,
-            adaptive_threshold=Z_SCORE_THRESHOLD,
-            signal_strength=0.0,
-        )
-
-    current_portfolio_pnl = simulator.total_pnl
-
-    return MarketDataAllResponse(data=all_data, portfolio_pnl=current_portfolio_pnl)
+    try:
+        data = {}
+        for symbol in SYMBOLS:
+            market_data = await data_provider.get_market_data_rest(symbol, TARGET_EXCHANGE)
+            if market_data:
+                data[symbol] = MarketDataResponse(
+                    timestamp=market_data['timestamp'],
+                    symbol=market_data['symbol'],
+                    bid_price=market_data['bid'],
+                    ask_price=market_data['ask'],
+                    mid_price=market_data['mid_price'],
+                    total_volume=market_data['baseVolume']
+                )
+        return MarketDataAllResponse(data=data)
+    except Exception as e:
+        logger.error(f"Error getting market data: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/v1/market_data/{symbol:path}", response_model=MarketDataResponse)
 async def get_market_data(
     symbol: str = Path(..., description="The symbol to get market data for, e.g., BTC/USDT")
 ):
-    symbol = symbol.replace("%2F", "/").replace("%2f", "/")
-    
-    if symbol not in ACTIVE_SYMBOLS:
-        raise HTTPException(status_code=404, detail=f"Data for symbol {symbol} is not actively tracked or supported.")
-
-    primary_ex = ARBITRAGE_EXCHANGES["primary"]
-    secondary_ex = ARBITRAGE_EXCHANGES["secondary"]
-
-    data_primary = await data_provider.get_market_data_rest(symbol, primary_ex)
-    data_secondary = await data_provider.get_market_data_rest(symbol, secondary_ex)
-
-    if not data_primary or data_primary.get('bid') is None or data_primary.get('ask') is None:
-        logger.warning(f"No live data or incomplete data for {symbol} from {primary_ex}.")
-        raise HTTPException(status_code=404, detail=f"Market data not available for {symbol} on primary exchange {primary_ex}")
-
-    if not data_secondary or data_secondary.get('bid') is None or data_secondary.get('ask') is None:
-        logger.warning(f"No live data or incomplete data for {symbol} from {secondary_ex}.")
-        raise HTTPException(status_code=404, detail=f"Market data not available for {symbol} on secondary exchange {secondary_ex}")
-
-    bid_primary = float(data_primary['bid'])
-    ask_primary = float(data_primary['ask'])
-    vol_primary = float(data_primary.get('baseVolume', 0) or data_primary.get('volume', 0))
-    api_timestamp_str = data_primary['timestamp']
-    
-    if 'Z' in api_timestamp_str:
-        timestamp_dt = datetime.fromisoformat(api_timestamp_str.replace('Z', '+00:00'))
-    else:
-        try:
-            timestamp_dt = datetime.fromisoformat(api_timestamp_str)
-        except ValueError:
-            try:
-                timestamp_dt = datetime.fromtimestamp(float(api_timestamp_str)/1000)
-            except ValueError:
-                logger.error(f"Could not parse timestamp: {api_timestamp_str}")
-                timestamp_dt = datetime.utcnow()
-
-    bid_secondary = float(data_secondary['bid'])
-    ask_secondary = float(data_secondary['ask'])
-    vol_secondary = float(data_secondary.get('baseVolume', 0) or data_secondary.get('volume', 0))
-    avg_volume = (vol_primary + vol_secondary) / 2
-
-    # Calculate spread for signal processing
-    current_market_spread_for_signal = bid_primary - ask_secondary
-
-    # Get signal metrics
-    signal_metrics = enhanced_signal_processors[symbol].update(
-        spread=current_market_spread_for_signal,
-        volume=avg_volume,
-        timestamp=timestamp_dt
-    )
-
-    # Get the best signal metrics (highest signal strength)
-    best_metrics = None
-    if signal_metrics:
-        best_metrics = max(signal_metrics.values(), key=lambda x: x.signal_strength)
-
-    response_data = {
-        "symbol": symbol,
-        "timestamp": api_timestamp_str,
-        "bid_price": bid_primary,
-        "ask_price": ask_primary,
-        "mid_price": (bid_primary + ask_primary) / 2,
-        "total_volume": avg_volume,
-        "signal": "HOLD",
-        "trade_executed": False,
-        "reason": "No arbitrage opportunity or conditions not met.",
-        "raw_zscore": best_metrics.zscore if best_metrics else 0.0,
-        "volume_weighted_zscore": best_metrics.volume_weighted_zscore if best_metrics else 0.0,
-        "momentum_score": best_metrics.momentum_score if best_metrics else 0.0,
-        "correlation_filter": best_metrics.correlation_filter if best_metrics else 0.0,
-        "volatility": best_metrics.volatility if best_metrics else 0.0,
-        "adaptive_threshold": best_metrics.threshold if best_metrics else Z_SCORE_THRESHOLD,
-        "signal_strength": best_metrics.signal_strength if best_metrics else 0.0
-    }
-
-    # Determine trading signal
-    if best_metrics and best_metrics.signal_strength >= best_metrics.threshold:
-        # Calculate potential profit
-        if best_metrics.zscore > 0:
-            # Sell on primary, buy on secondary
-            profit = float(bid_primary) - float(ask_secondary)
-            min_profit = TRADE_SETTINGS['thresholds']['min_profit_after_fees'].get(
-                symbol, TRADE_SETTINGS['thresholds']['min_profit_after_fees']['default']
-            )
-            
-            if profit >= min_profit:
-                response_data["signal"] = "SELL_PRIMARY_BUY_SECONDARY"
-                response_data["trade_executed"] = True
-                response_data["reason"] = f"Strong sell signal on primary, buy on secondary. Z-score: {best_metrics.zscore:.2f}, Profit: {profit:.8f}"
-        else:
-            # Buy on primary, sell on secondary
-            profit = float(bid_secondary) - float(ask_primary)
-            min_profit = TRADE_SETTINGS['thresholds']['min_profit_after_fees'].get(
-                symbol, TRADE_SETTINGS['thresholds']['min_profit_after_fees']['default']
-            )
-            
-            if profit >= min_profit:
-                response_data["signal"] = "SELL_SECONDARY_BUY_PRIMARY"
-                response_data["trade_executed"] = True
-                response_data["reason"] = f"Strong buy signal on primary, sell on secondary. Z-score: {best_metrics.zscore:.2f}, Profit: {profit:.8f}"
-
-    return MarketDataResponse(**response_data)
+    try:
+        market_data = await data_provider.get_market_data_rest(symbol, TARGET_EXCHANGE)
+        if not market_data:
+            raise HTTPException(status_code=404, detail=f"Market data not found for {symbol}")
+        
+        return MarketDataResponse(
+            timestamp=market_data['timestamp'],
+            symbol=market_data['symbol'],
+            bid_price=market_data['bid'],
+            ask_price=market_data['ask'],
+            mid_price=market_data['mid_price'],
+            total_volume=market_data['baseVolume']
+        )
+    except Exception as e:
+        logger.error(f"Error getting market data for {symbol}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/v1/simulation/status", response_model=SimulationStatusResponse)
 async def get_simulation_status():
@@ -552,10 +424,6 @@ async def get_leaderboard():
     ]
     leaderboard.sort(key=lambda x: x.total_pnl, reverse=True)
     return LeaderboardResponse(leaderboard=leaderboard)
-
-@app.get("/")
-async def read_root():
-    return {"message": "Welcome to the Crypto HFT Tool API. Visit /docs for API documentation."}
 
 # To run the server (save this as main.py in src/crypto_hft_tool/):
 # Ensure your terminal is in the root of your project (crypto_hft_tool folder, not src)
