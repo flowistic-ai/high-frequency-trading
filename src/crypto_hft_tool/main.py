@@ -34,7 +34,10 @@ app = FastAPI(
 
 # --- CORS Middleware Configuration ---
 # List of origins that are allowed to make requests to this backend.
-origins = ["*"]
+origins = [
+    "https://curious-cranachan-9e504e.netlify.app",
+    "http://localhost:3000"  # Keep local development working
+]
 
 app.add_middleware(
     CORSMiddleware,

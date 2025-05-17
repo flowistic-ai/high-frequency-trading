@@ -3,9 +3,10 @@ import Plot from 'react-plotly.js';
 import './App.css';
 import axios from 'axios';
 import { QueryClient, QueryClientProvider, useQuery } from 'react-query';
+import config from './config';
 
-// Use environment variable for API base URL, defaulting to local for development
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+// Use config for API base URL
+const API_BASE_URL = config.apiUrl;
 const SYMBOLS = [
   "BTC/USDT", "ETH/USDT"
 ];
