@@ -107,8 +107,19 @@ class EnhancedSignalProcessor:
                 self.volumes = self.volumes[-max_window:]
                 self.timestamps = self.timestamps[-max_window:]
             
+            # Return default values if not enough data
             if len(self.spreads) < 2:
-                return {}
+                return {
+                    self.volatility_window: SignalMetrics(
+                        zscore=0.0,
+                        volume_weighted_zscore=0.0,
+                        momentum_score=0.0,
+                        correlation_filter=0.0,
+                        volatility=0.0,
+                        threshold=self.base_signal_threshold,
+                        signal_strength=0.0
+                    )
+                }
                 
             # Calculate returns and volatility
             returns = np.diff(self.spreads) / self.spreads[:-1]

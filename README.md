@@ -6,33 +6,17 @@ A sophisticated High-Frequency Trading (HFT) tool designed for cryptocurrency ma
 
 This project implements a comprehensive cryptocurrency trading system that combines real-time market data processing, advanced statistical arbitrage strategies, and a modern web-based dashboard for monitoring and control. The system is built with scalability and performance in mind, utilizing FastAPI for the backend, React for the frontend, and modern Python technologies for the trading engine.
 
-## Architecture
+## Core Features
 
-### Backend (FastAPI)
-- RESTful API endpoints for market data, trading signals, and simulation results
-- WebSocket support for real-time data streaming from multiple exchanges
-- CORS-enabled for frontend integration
-- Modular design with separate components for data provision, signal processing, and trade execution
+### Cross-Exchange Arbitrage
+- Real-time price monitoring across multiple exchanges (Binance, Kraken)
+- Automated trade execution when price discrepancies exceed thresholds
+- Multi-exchange order routing and execution
+- Slippage and fee-aware trading decisions
+- Cross-exchange transfer cost consideration
 
-### Frontend (React)
-- Modern React-based dashboard for monitoring trading activity
-- Material-UI components for consistent design
-- Interactive charts using Plotly.js and Recharts
-- Real-time data updates using React Query
-- Performance metrics visualization
-- Trade history and leaderboard
-
-### Trading Engine
-- Cross-exchange statistical arbitrage implementation using z-score based signals
-- Multi-exchange support through CCXT integration (Binance, Kraken)
-- Adaptive parameter adjustment based on market conditions
-- Real-time orderbook processing and trade execution
-- Simultaneous order execution across exchanges
-
-## Statistical Model
-
-### Signal Generation
-- Rolling Z-Score calculation for spread analysis between exchanges
+### Statistical Arbitrage
+- Z-score based spread analysis between exchanges
 - Volume-weighted signal adjustment
 - Momentum-based signal enhancement
 - Adaptive threshold calculation based on:
@@ -41,44 +25,29 @@ This project implements a comprehensive cryptocurrency trading system that combi
   - Time of day
   - Momentum indicators
   - Exchange-specific liquidity
+- Self-adjusting parameters based on market conditions
 
-### Self-Adjusting Parameters
-- Dynamic threshold adjustment based on market conditions
-- Volume impact consideration
-- Time-based parameter optimization
-- Volatility-based signal strength adjustment
-- Exchange-specific parameter tuning
+## Technical Architecture
 
-## Features
+### Backend (FastAPI)
+- RESTful API endpoints for market data, trading signals, and simulation results
+- WebSocket support for real-time data streaming from multiple exchanges
+- CORS-enabled for frontend integration
+- Modular design with separate components for:
+  - Data provision
+  - Signal processing
+  - Trade execution
+  - Orderbook management
+  - Performance monitoring
 
-### Market Data Processing
-- Real-time orderbook management across exchanges
-- WebSocket-based market data streaming from Binance and Kraken
-- Multi-exchange data aggregation and synchronization
-- Efficient data pipeline for processing market information
-- Cross-exchange spread monitoring
-
-### Trading Strategies
-- Cross-exchange statistical arbitrage implementation
-- Enhanced signal generation with multiple indicators
-- Backtesting capabilities
-- Live trading execution
-- Multi-exchange order routing
-
-### Fee Structure
-- Maker/Taker fee consideration for each exchange
-- Exchange-specific fee handling (Binance, Kraken)
-- Slippage modeling
-- Minimum spread requirements
-- Cross-exchange transfer costs
-
-### Monitoring & Analytics
-- Real-time dashboard
-- Performance metrics
-- Trading activity monitoring
-- Interactive charts and analytics
-- Leaderboard for strategy performance
-- Exchange-specific performance tracking
+### Frontend (React)
+- Modern React-based dashboard for monitoring trading activity
+- Material-UI components for consistent design
+- Interactive charts using Plotly.js and Recharts
+- Real-time data updates using React Query
+- Performance metrics visualization
+- Trade history and leaderboard
+- Responsive design for all device sizes
 
 ## Project Structure
 
@@ -96,9 +65,9 @@ crypto_hft_tool/
 │       ├── execution_manager.py   # Order execution handling
 │       ├── orderbook_manager.py   # Orderbook processing
 │       └── data_pipeline.py       # Data processing pipeline
+├── hft-frontend/                  # React frontend application
 ├── tests/                         # Test suite
 ├── docs/                          # Documentation
-├── hft-frontend/                  # React frontend application
 └── data/                          # Data storage
 ```
 

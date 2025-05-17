@@ -320,20 +320,71 @@ async def get_market_data(
     symbol: str = Path(..., description="The symbol to get market data for, e.g., BTC/USDT")
 ):
     try:
-        market_data = await data_provider.get_market_data_rest(symbol, TARGET_EXCHANGE)
-        if not market_data:
-            raise HTTPException(status_code=404, detail=f"Market data not found for {symbol}")
+        # Get market data from data provider
+        data = await data_provider.get_market_data_rest(symbol, ARBITRAGE_EXCHANGES["primary"])
+        if not data:
+            raise HTTPException(status_code=404, detail=f"No data available for {symbol}")
+
+        # Calculate spread for signal processing
+        current_market_spread = float(data['bid']) - float(data['ask'])
+        avg_volume = float(data.get('baseVolume', 0) or data.get('volume', 0))
         
+        # Get timestamp
+        api_timestamp_str = data['timestamp']
+        if 'Z' in api_timestamp_str:
+            timestamp_dt = datetime.fromisoformat(api_timestamp_str.replace('Z', '+00:00'))
+        else:
+            try:
+                timestamp_dt = datetime.fromisoformat(api_timestamp_str)
+            except ValueError:
+                try:
+                    timestamp_dt = datetime.fromtimestamp(float(api_timestamp_str)/1000)
+                except ValueError:
+                    timestamp_dt = datetime.utcnow()
+
+        # Update signal processor
+        signal_metrics = enhanced_signal_processors[symbol].update(
+            spread=current_market_spread,
+            volume=avg_volume,
+            timestamp=timestamp_dt
+        )
+
+        # Get the best metrics (or default if none available)
+        best_metrics = None
+        if signal_metrics:
+            best_metrics = max(signal_metrics.values(), key=lambda x: x.signal_strength)
+        else:
+            # Create default metrics if none available
+            best_metrics = SignalMetrics(
+                zscore=0.0,
+                volume_weighted_zscore=0.0,
+                momentum_score=0.0,
+                correlation_filter=0.0,
+                volatility=0.0,
+                threshold=ENHANCED_SIGNAL_SETTINGS['signal_threshold'],
+                signal_strength=0.0
+            )
+
         return MarketDataResponse(
-            timestamp=market_data['timestamp'],
-            symbol=market_data['symbol'],
-            bid_price=market_data['bid'],
-            ask_price=market_data['ask'],
-            mid_price=market_data['mid_price'],
-            total_volume=market_data['baseVolume']
+            timestamp=timestamp_dt.isoformat(),
+            symbol=symbol,
+            bid_price=float(data['bid']),
+            ask_price=float(data['ask']),
+            mid_price=(float(data['bid']) + float(data['ask'])) / 2,
+            total_volume=avg_volume,
+            signal="HOLD",  # Default signal
+            trade_executed=False,
+            reason="Initial state",
+            raw_zscore=best_metrics.zscore,
+            volume_weighted_zscore=best_metrics.volume_weighted_zscore,
+            momentum_score=best_metrics.momentum_score,
+            correlation_filter=best_metrics.correlation_filter,
+            volatility=best_metrics.volatility,
+            adaptive_threshold=best_metrics.threshold,
+            signal_strength=best_metrics.signal_strength
         )
     except Exception as e:
-        logger.error(f"Error getting market data for {symbol}: {str(e)}")
+        logger.error(f"Error getting market data for {symbol}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/v1/simulation/status", response_model=SimulationStatusResponse)

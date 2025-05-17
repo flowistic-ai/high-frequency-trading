@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: crypto-hft-backend
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn src.crypto_hft_tool.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.0
+      - key: LOG_LEVEL
+        value: INFO
+      - key: API_HOST
+        value: 0.0.0.0
+      - key: API_PORT
+        value: $PORT 
