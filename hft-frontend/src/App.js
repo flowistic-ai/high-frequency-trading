@@ -17,46 +17,101 @@ const MAX_HISTORY_POINTS = 300;
 const api = {
   getMarketData: async (symbol) => {
     try {
-      const { data } = await axios.get(`${API_BASE_URL}/api/v1/market_data/${encodeURIComponent(symbol)}`);
+      console.log(`Fetching market data from: ${API_BASE_URL}/api/v1/market_data/${encodeURIComponent(symbol)}`);
+      const { data } = await axios.get(`${API_BASE_URL}/api/v1/market_data/${encodeURIComponent(symbol)}`, {
+        timeout: 5000,
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        }
+      });
       return data;
     } catch (error) {
       console.error(`Error fetching market data for ${symbol}:`, error);
+      if (error.response) {
+        console.error('Response data:', error.response.data);
+        console.error('Response status:', error.response.status);
+      }
       return null;
     }
   },
   getSimulationStatus: async () => {
     try {
-      const { data } = await axios.get(`${API_BASE_URL}/api/v1/simulation/status`);
+      console.log(`Fetching simulation status from: ${API_BASE_URL}/api/v1/simulation/status`);
+      const { data } = await axios.get(`${API_BASE_URL}/api/v1/simulation/status`, {
+        timeout: 5000,
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        }
+      });
       return data;
     } catch (error) {
       console.error('Error fetching simulation status:', error);
+      if (error.response) {
+        console.error('Response data:', error.response.data);
+        console.error('Response status:', error.response.status);
+      }
       return null;
     }
   },
   getRecentTrades: async (limit = 10) => {
     try {
-      const { data } = await axios.get(`${API_BASE_URL}/api/v1/simulation/trades?limit=${limit}`);
+      console.log(`Fetching recent trades from: ${API_BASE_URL}/api/v1/simulation/trades?limit=${limit}`);
+      const { data } = await axios.get(`${API_BASE_URL}/api/v1/simulation/trades?limit=${limit}`, {
+        timeout: 5000,
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        }
+      });
       return data.trades || [];
     } catch (error) {
       console.error('Error fetching recent trades:', error);
+      if (error.response) {
+        console.error('Response data:', error.response.data);
+        console.error('Response status:', error.response.status);
+      }
       return [];
     }
   },
   getLeaderboard: async () => {
     try {
-      const { data } = await axios.get(`${API_BASE_URL}/api/v1/simulation/leaderboard`);
+      console.log(`Fetching leaderboard from: ${API_BASE_URL}/api/v1/simulation/leaderboard`);
+      const { data } = await axios.get(`${API_BASE_URL}/api/v1/simulation/leaderboard`, {
+        timeout: 5000,
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        }
+      });
       return data.leaderboard || [];
     } catch (error) {
       console.error('Error fetching leaderboard:', error);
+      if (error.response) {
+        console.error('Response data:', error.response.data);
+        console.error('Response status:', error.response.status);
+      }
       return [];
     }
   },
   getAllMarketData: async () => {
     try {
-      const { data } = await axios.get(`${API_BASE_URL}/api/v1/market_data/all`);
+      console.log(`Fetching all market data from: ${API_BASE_URL}/api/v1/market_data/all`);
+      const { data } = await axios.get(`${API_BASE_URL}/api/v1/market_data/all`, {
+        timeout: 5000,
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        }
+      });
       return data.data || {};
     } catch (error) {
       console.error('Error fetching all market data:', error);
+      if (error.response) {
+        console.error('Response data:', error.response.data);
+        console.error('Response status:', error.response.status);
+      }
       return {};
     }
   },
