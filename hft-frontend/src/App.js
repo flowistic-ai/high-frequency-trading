@@ -19,10 +19,17 @@ const api = {
     try {
       console.log(`Fetching market data from: ${API_BASE_URL}/api/v1/market_data/${encodeURIComponent(symbol)}`);
       const { data } = await axios.get(`${API_BASE_URL}/api/v1/market_data/${encodeURIComponent(symbol)}`, {
-        timeout: 5000,
+        timeout: 10000, // Increased timeout
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+        },
+        withCredentials: false,
+        validateStatus: function (status) {
+          return status >= 200 && status < 500; // Accept all responses for better error handling
         }
       });
       return data;
@@ -31,6 +38,10 @@ const api = {
       if (error.response) {
         console.error('Response data:', error.response.data);
         console.error('Response status:', error.response.status);
+      } else if (error.request) {
+        console.error('No response received:', error.request);
+      } else {
+        console.error('Error setting up request:', error.message);
       }
       return null;
     }

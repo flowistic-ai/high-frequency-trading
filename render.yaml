@@ -2,14 +2,23 @@ services:
   - type: web
     name: crypto-hft-backend
     env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn src.crypto_hft_tool.main:app --host 0.0.0.0 --port $PORT
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+      pip install -e .
+    startCommand: uvicorn src.crypto_hft_tool.main:app --host 0.0.0.0 --port $PORT --workers 4
     envVars:
       - key: PYTHON_VERSION
-        value: 3.9.0
+        value: 3.11.0
       - key: LOG_LEVEL
         value: INFO
       - key: API_HOST
         value: 0.0.0.0
       - key: API_PORT
-        value: $PORT 
+        value: $PORT
+      - key: PYTHONPATH
+        value: .
+      - key: CORS_ORIGINS
+        value: "https://*.netlify.app,http://localhost:3000"
+    healthCheckPath: /
+    autoDeploy: true 

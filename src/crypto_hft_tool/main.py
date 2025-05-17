@@ -7,15 +7,17 @@ import logging # Import logging
 import time
 from datetime import datetime, timezone
 import asyncio
+from fastapi.responses import JSONResponse
+import os
 print(">>> RUNNING main.py FROM:", __file__)
 
-# Update imports to use new class names
-from .data_provider import BaseDataProvider, SimulatedSingleExchangeDataProvider
-from .signals import RollingZScore
-from .simulation import TradeSimulator
+# Update imports to use absolute imports
+from src.crypto_hft_tool.data_provider import BaseDataProvider, SimulatedSingleExchangeDataProvider
+from src.crypto_hft_tool.signals import RollingZScore
+from src.crypto_hft_tool.simulation import TradeSimulator
 # from .risk_manager import RiskManager # Removed
-from .enhanced_signals import EnhancedSignalProcessor, SignalMetrics
-from .config import (
+from src.crypto_hft_tool.enhanced_signals import EnhancedSignalProcessor, SignalMetrics
+from src.crypto_hft_tool.config import (
     SYMBOLS, TRADE_SETTINGS, ZSCORE_SETTINGS, # RISK_SETTINGS, # Removed
     DATA_PROVIDER_MODE, LOG_LEVEL, TARGET_EXCHANGE, ENHANCED_SIGNAL_SETTINGS,
     API_PORT, API_HOST, FEES, MIN_SPREAD_PCT, # STOP_LOSS_SPREAD_AMOUNT, # Removed
@@ -34,10 +36,10 @@ app = FastAPI(
 
 # --- CORS Middleware Configuration ---
 # List of origins that are allowed to make requests to this backend.
-origins = [
-    "https://curious-cranachan-9e504e.netlify.app",
-    "http://localhost:3000"  # Keep local development working
-]
+
+# Get CORS origins from environment variable or use defaults
+CORS_ORIGINS = os.getenv('CORS_ORIGINS', 'https://*.netlify.app,http://localhost:3000,https://high-frequency-trading-eu.onrender.com')
+origins = [origin.strip() for origin in CORS_ORIGINS.split(',')]
 
 app.add_middleware(
     CORSMiddleware,
@@ -45,7 +47,32 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],  # Allow all methods
     allow_headers=["*"],  # Allow all headers
+    expose_headers=["*"],  # Expose all headers
+    max_age=3600  # Cache preflight requests for 1 hour
 )
+
+# Add security headers middleware
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
+# Add error handling middleware
+@app.middleware("http")
+async def add_error_handling(request, call_next):
+    try:
+        response = await call_next(request)
+        return response
+    except Exception as e:
+        logger.error(f"Unhandled error: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error", "error": str(e)}
+        )
 
 # --- Global State Management (Simplified for initial setup) ---
 # In a production app, consider more robust state management or dependency injection.

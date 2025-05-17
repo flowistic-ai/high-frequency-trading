@@ -6,12 +6,11 @@ setup(
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     install_requires=[
-        "ccxt",
-        "websockets",
+        "fastapi",
+        "uvicorn",
         "pandas",
-        "numpy",
+        "pydantic",
         "python-dotenv",
-        "pytest",
     ],
     python_requires=">=3.9",
 )
