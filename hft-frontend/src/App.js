@@ -19,18 +19,12 @@ const api = {
     try {
       console.log(`Fetching market data from: ${API_BASE_URL}/api/v1/market_data/${encodeURIComponent(symbol)}`);
       const { data } = await axios.get(`${API_BASE_URL}/api/v1/market_data/${encodeURIComponent(symbol)}`, {
-        timeout: 10000, // Increased timeout
+        timeout: 10000,
         headers: {
           'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+          'Content-Type': 'application/json'
         },
-        withCredentials: false,
-        validateStatus: function (status) {
-          return status >= 200 && status < 500; // Accept all responses for better error handling
-        }
+        withCredentials: false
       });
       return data;
     } catch (error) {
@@ -48,84 +42,68 @@ const api = {
   },
   getSimulationStatus: async () => {
     try {
-      console.log(`Fetching simulation status from: ${API_BASE_URL}/api/v1/simulation/status`);
       const { data } = await axios.get(`${API_BASE_URL}/api/v1/simulation/status`, {
-        timeout: 5000,
+        timeout: 10000,
         headers: {
           'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        }
+          'Content-Type': 'application/json'
+        },
+        withCredentials: false
       });
       return data;
     } catch (error) {
       console.error('Error fetching simulation status:', error);
-      if (error.response) {
-        console.error('Response data:', error.response.data);
-        console.error('Response status:', error.response.status);
-      }
       return null;
     }
   },
   getRecentTrades: async (limit = 10) => {
     try {
-      console.log(`Fetching recent trades from: ${API_BASE_URL}/api/v1/simulation/trades?limit=${limit}`);
       const { data } = await axios.get(`${API_BASE_URL}/api/v1/simulation/trades?limit=${limit}`, {
-        timeout: 5000,
+        timeout: 10000,
         headers: {
           'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        }
+          'Content-Type': 'application/json'
+        },
+        withCredentials: false
       });
       return data.trades || [];
     } catch (error) {
       console.error('Error fetching recent trades:', error);
-      if (error.response) {
-        console.error('Response data:', error.response.data);
-        console.error('Response status:', error.response.status);
-      }
       return [];
     }
   },
   getLeaderboard: async () => {
     try {
-      console.log(`Fetching leaderboard from: ${API_BASE_URL}/api/v1/simulation/leaderboard`);
       const { data } = await axios.get(`${API_BASE_URL}/api/v1/simulation/leaderboard`, {
-        timeout: 5000,
+        timeout: 10000,
         headers: {
           'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        }
+          'Content-Type': 'application/json'
+        },
+        withCredentials: false
       });
       return data.leaderboard || [];
     } catch (error) {
       console.error('Error fetching leaderboard:', error);
-      if (error.response) {
-        console.error('Response data:', error.response.data);
-        console.error('Response status:', error.response.status);
-      }
       return [];
     }
   },
   getAllMarketData: async () => {
     try {
-      console.log(`Fetching all market data from: ${API_BASE_URL}/api/v1/market_data/all`);
       const { data } = await axios.get(`${API_BASE_URL}/api/v1/market_data/all`, {
-        timeout: 5000,
+        timeout: 10000,
         headers: {
           'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        }
+          'Content-Type': 'application/json'
+        },
+        withCredentials: false
       });
       return data.data || {};
     } catch (error) {
       console.error('Error fetching all market data:', error);
-      if (error.response) {
-        console.error('Response data:', error.response.data);
-        console.error('Response status:', error.response.status);
-      }
       return {};
     }
-  },
+  }
 };
 
 const queryClient = new QueryClient({
@@ -605,3 +583,4 @@ export default function App() {
     </QueryClientProvider>
   );
 }
+

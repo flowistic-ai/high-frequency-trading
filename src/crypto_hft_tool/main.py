@@ -38,23 +38,26 @@ app = FastAPI(
 # List of origins that are allowed to make requests to this backend.
 
 # Get CORS origins from environment variable or use defaults
-CORS_ORIGINS = os.getenv('CORS_ORIGINS', 'https://*.netlify.app,http://localhost:3000,https://high-frequency-trading-eu.onrender.com')
+CORS_ORIGINS = os.getenv('CORS_ORIGINS', 'https://*.netlify.app,http://localhost:3000,https://high-frequency-trading-eu.onrender.com,https://curious-cranachan-9e504e.netlify.app')
 origins = [origin.strip() for origin in CORS_ORIGINS.split(',')]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],  # Allow all methods
-    allow_headers=["*"],  # Allow all headers
-    expose_headers=["*"],  # Expose all headers
-    max_age=3600  # Cache preflight requests for 1 hour
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600
 )
 
 # Add security headers middleware
 @app.middleware("http")
 async def add_security_headers(request, call_next):
     response = await call_next(request)
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
