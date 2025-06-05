@@ -104,15 +104,19 @@ crypto_hft_tool/
    cd crypto_hft_tool
    ```
 
-2. Create and activate a virtual environment:
+2. Install dependencies:
+   You can install dependencies using either pip or uv:
+
+   **Option 1: pip**
    ```bash
    python -m venv venv
    source venv/bin/activate  # On Windows: venv\Scripts\activate
+   pip install -r requirements.txt
    ```
 
-3. Install dependencies:
+   **Option 2: uv**
    ```bash
-   pip install -r requirements.txt
+   uv sync
    ```
 
 4. Set up environment variables:
@@ -133,8 +137,21 @@ crypto_hft_tool/
 
 ### Running the Backend API
 
+You can run the backend using either `uvicorn` directly or via [`uv`](https://github.com/astral-sh/uv), a modern Python package manager that supports PEP 582 and virtual environments out-of-the-box.
+
+**Option 1: Using uvicorn directly**
 ```bash
 uvicorn src.crypto_hft_tool.main:app --reload
+```
+
+**Option 2: Using uv**
+```bash
+uv pip install uvicorn  # if not already installed
+uvicorn src.crypto_hft_tool.main:app --reload
+```
+Or, if you want to run it via uv's run command:
+```bash
+uv run uvicorn src.crypto_hft_tool.main:app --reload
 ```
 
 ### Running the Frontend
