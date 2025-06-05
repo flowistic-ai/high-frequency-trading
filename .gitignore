@@ -4,3 +4,5 @@ __pycache__/
 data/
 logs/
 .env
+**/*.egg-info/
+**/node_modules/
