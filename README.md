@@ -110,7 +110,8 @@ crypto_hft_tool/
    **Option 1: pip**
    ```bash
    python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   source venv/bin/activate  
+   # On Windows: venv\Scripts\activate
    pip install -r requirements.txt
    ```
 
