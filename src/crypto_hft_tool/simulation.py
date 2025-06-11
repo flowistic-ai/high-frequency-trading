@@ -1,5 +1,6 @@
 from typing import List, Dict, Any, Tuple
 from datetime import datetime
+import pandas as pd
 from .config import FEES
 
 from .utils.logging_config import get_logger
