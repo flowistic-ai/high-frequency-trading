@@ -1,5 +1,4 @@
 import asyncio
-import logging
 from typing import Dict, Optional, List
 from datetime import datetime
 from decimal import Decimal
@@ -17,8 +16,9 @@ from .config import (
 from .enhanced_signals import EnhancedSignalProcessor
 from .execution_manager import ExecutionManager
 from .enhanced_risk_manager import EnhancedRiskManager
+from .utils.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class LiveTrader:
     def __init__(self, max_workers: int = 4):

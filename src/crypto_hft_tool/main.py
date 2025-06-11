@@ -1,32 +1,33 @@
-from fastapi import FastAPI, HTTPException, Path, Query
-from fastapi.middleware.cors import CORSMiddleware # Import CORS Middleware
-from pydantic import BaseModel, Field
-from typing import Dict, Optional, List, Union, Any
-import pandas as pd # For pd.Timestamp
-import logging # Import logging
+from fastapi import FastAPI, HTTPException, Path
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Dict, Optional, List, Any
 import time
 from datetime import datetime, timezone
 import asyncio
 from fastapi.responses import JSONResponse
 import os
+
+# Centralized logging setup
+from src.crypto_hft_tool.utils.logging_config import setup_logging, get_logger
+
 print(">>> RUNNING main.py FROM:", __file__)
 
 # Update imports to use absolute imports
 from src.crypto_hft_tool.data_provider import BaseDataProvider, SimulatedSingleExchangeDataProvider
 from src.crypto_hft_tool.signals import RollingZScore
 from src.crypto_hft_tool.simulation import TradeSimulator
-# from .risk_manager import RiskManager # Removed
-from src.crypto_hft_tool.enhanced_signals import EnhancedSignalProcessor, SignalMetrics
+from src.crypto_hft_tool.enhanced_signals import EnhancedSignalProcessor
 from src.crypto_hft_tool.config import (
-    SYMBOLS, TRADE_SETTINGS, ZSCORE_SETTINGS, # RISK_SETTINGS, # Removed
+    SYMBOLS, TRADE_SETTINGS, ZSCORE_SETTINGS,
     DATA_PROVIDER_MODE, LOG_LEVEL, TARGET_EXCHANGE, ENHANCED_SIGNAL_SETTINGS,
-    API_PORT, API_HOST, FEES, MIN_SPREAD_PCT, # STOP_LOSS_SPREAD_AMOUNT, # Removed
+    API_PORT, API_HOST, FEES, MIN_SPREAD_PCT,
     ARBITRAGE_EXCHANGES
 )
 
-# Configure logging
-logging.basicConfig(level=getattr(logging, LOG_LEVEL))
-logger = logging.getLogger(__name__)
+# Configure logging once for the entire application
+setup_logging(level=LOG_LEVEL)
+logger = get_logger(__name__)
 
 app = FastAPI(
     title="Crypto HFT Tool API",

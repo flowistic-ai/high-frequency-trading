@@ -1,6 +1,5 @@
 import pandas as pd
 import numpy as np
-import logging
 from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
@@ -13,9 +12,9 @@ from .config import (
     SYMBOLS, data_folder, ZSCORE_SETTINGS, 
     TRADE_SETTINGS, RISK_SETTINGS
 )
+from .utils.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+logger = get_logger(__name__)
 
 class Backtester:
     def __init__(
@@ -48,8 +47,8 @@ class Backtester:
             'current_drawdown': 0.0,
             'peak_value': 0.0,
             'trades_per_symbol': {sym: 0 for sym in SYMBOLS},
-            'trades_per_timeframe': {tf: 0 for tf in ZSCORE_SETTINGS['windows'].keys()},
-            'pnl_per_timeframe': {tf: 0.0 for tf in ZSCORE_SETTINGS['windows'].keys()},
+            'trades_per_timeframe': {str(tf): 0 for tf in ZSCORE_SETTINGS['windows']},
+            'pnl_per_timeframe': {str(tf): 0.0 for tf in ZSCORE_SETTINGS['windows']},
             'trade_pnls': [],
             'cumulative_pnls': [],
             'sharpe_ratio': 0.0,

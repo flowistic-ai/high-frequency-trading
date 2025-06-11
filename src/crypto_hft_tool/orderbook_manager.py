@@ -1,6 +1,5 @@
 import asyncio
 import json
-import logging
 from typing import Dict, Optional, Set
 from datetime import datetime
 from decimal import Decimal
@@ -9,8 +8,9 @@ import websockets
 from sortedcontainers import SortedDict
 
 from .config import WS_ENDPOINTS, SYMBOLS
+from .utils.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class OrderBook:
     def __init__(self, depth: int = 10):

@@ -5,11 +5,11 @@ from typing import Optional, Dict, List, Any
 from abc import ABC, abstractmethod
 import random
 from datetime import datetime, timezone, timedelta
-import logging
 
 from .config import data_folder, EXCHANGE_CREDENTIALS, ARBITRAGE_EXCHANGES
+from .utils.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class BaseDataProvider(ABC):
     """

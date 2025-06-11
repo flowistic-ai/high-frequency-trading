@@ -1,11 +1,12 @@
 from collections import deque
 import numpy as np
-import logging
 from typing import Dict, Optional, List
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-logger = logging.getLogger(__name__)
+from .utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 @dataclass
 class TimeWindowData:
@@ -19,12 +20,15 @@ class RollingZScore:
     """
     Calculates z-scores on rolling windows of data.
     """
-    def __init__(self, windows: List[int]):
+    def __init__(self, windows: List[int], vol_adjustment: bool = False):
         """
         Initialize with window sizes.
         windows: List[int] - e.g., [30, 60, 120]
+        vol_adjustment: bool - Whether to apply volatility adjustment
         """
         self.windows = {str(w): w for w in windows}
+        self.vol_adjustment = vol_adjustment
+        self.last_volatility = 0.0
         self.data = {
             name: deque(maxlen=size) 
             for name, size in self.windows.items()

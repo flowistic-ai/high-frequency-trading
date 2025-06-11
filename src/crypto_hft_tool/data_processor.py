@@ -1,10 +1,10 @@
 import os
 import pandas as pd
-import logging
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+from .utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 class DataProcessor:
     def __init__(self, raw_data_dir="data/raw", processed_data_dir="data/processed"):

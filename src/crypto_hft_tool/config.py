@@ -173,19 +173,19 @@ ZSCORE_SETTINGS = {
 }
 
 # Risk Management Settings
-# RISK_SETTINGS = {
-#     'max_position_value': {
-#         'BTC/USDT': 50000,   # Maximum position value in USDT
-#         'ETH/USDT': 25000,
-#         'default': 10000
-#     },
-#     'max_drawdown': {
-#         'hourly': 0.02,      # 2% maximum hourly drawdown
-#         'daily': 0.05,       # 5% maximum daily drawdown
-#         'total': 0.10        # 10% maximum total drawdown
-#     },
-#     'stop_loss': {
-#         'spread_multiplier': 2.0,  # Stop loss at 2x entry spread
-#         'max_loss_per_trade': 0.01 # 1% maximum loss per trade
-#     }
-# }
+RISK_SETTINGS = {
+    'max_position_value': {
+        'BTC/USDT': 50000,   # Maximum position value in USDT
+        'ETH/USDT': 25000,
+        'default': 10000
+    },
+    'max_drawdown': {
+        'hourly': 0.02,      # 2% maximum hourly drawdown
+        'daily': 0.05,       # 5% maximum daily drawdown
+        'total': 0.10        # 10% maximum total drawdown
+    },
+    'stop_loss': {
+        'spread_multiplier': 2.0,  # Stop loss at 2x entry spread
+        'max_loss_per_trade': 0.01 # 1% maximum loss per trade
+    }
+}

@@ -1,13 +1,13 @@
 import asyncio
-import logging
 from typing import Dict, Optional, List, Tuple
 from datetime import datetime
 from decimal import Decimal
 import numpy as np
 
 from .fee_manager import FeeManager
+from .utils.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class ExecutionManager:
     def __init__(

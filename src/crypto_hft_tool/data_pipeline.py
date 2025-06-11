@@ -1,6 +1,5 @@
 import asyncio
 import json
-import logging
 from ccxt.async_support import binance, kraken
 import websockets
 
@@ -8,9 +7,9 @@ from .config import WS_ENDPOINTS, SYMBOLS
 from .signals import RollingZScore
 from .simulation import TradeSimulator
 from .risk_manager import RiskManager
+from .utils.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+logger = get_logger(__name__)
 
 
 class OrderBookPipeline:

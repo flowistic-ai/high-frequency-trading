@@ -1,10 +1,10 @@
 from typing import List, Dict, Any, Tuple
 from datetime import datetime
 from .config import FEES
-import logging
-import pandas as pd
 
-logger = logging.getLogger(__name__)
+from .utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 class TradeSimulator:
     """

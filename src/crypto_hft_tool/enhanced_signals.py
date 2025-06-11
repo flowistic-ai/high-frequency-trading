@@ -1,13 +1,12 @@
 import numpy as np
 from typing import Dict, Optional, List
 from datetime import datetime
-import logging
 from dataclasses import dataclass, field
-import pandas as pd
 
 from .signals import RollingZScore
+from .utils.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 @dataclass
 class SignalMetrics:

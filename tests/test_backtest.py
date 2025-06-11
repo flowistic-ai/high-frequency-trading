@@ -1,19 +1,15 @@
 import pytest
 import pandas as pd
 import numpy as np
-import logging
 from datetime import datetime, timedelta
 from crypto_hft_tool.backtest import Backtester
 from crypto_hft_tool.config import ZSCORE_SETTINGS, TRADE_SETTINGS
 
-# Set up logging for tests
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(levelname)s - %(message)s'
-)
+# Import centralized logging setup
+from crypto_hft_tool.utils.logging_config import setup_logging
 
-# Ensure the crypto_hft_tool logger is set to DEBUG
-logging.getLogger('crypto_hft_tool').setLevel(logging.DEBUG)
+# Configure logging for tests
+setup_logging(level='DEBUG')
 
 def create_sample_data(symbol: str = "BTC/USDT", rows: int = 1000):
     """Create synthetic market data for testing"""
@@ -40,8 +36,8 @@ def test_backtester_initialization():
     
     # Check Z-score trackers initialization
     assert len(backtester.ztrackers) == len(backtester.metrics['trades_per_symbol'])
-    assert all(tf in backtester.metrics['trades_per_timeframe'] 
-              for tf in ZSCORE_SETTINGS['windows'].keys())
+    assert all(str(tf) in backtester.metrics['trades_per_timeframe'] 
+              for tf in ZSCORE_SETTINGS['windows'])
     
     # Check fee manager initialization
     assert hasattr(backtester, 'fee_manager')
@@ -219,4 +215,4 @@ def test_full_backtest():
     
     # Check timeframe tracking
     assert sum(metrics['trades_per_timeframe'].values()) == len(metrics['trade_pnls'])
-    assert all(tf in metrics['pnl_per_timeframe'] for tf in ZSCORE_SETTINGS['windows']) 
+    assert all(str(tf) in metrics['pnl_per_timeframe'] for tf in ZSCORE_SETTINGS['windows']) 

@@ -1,12 +1,12 @@
 import asyncio
 import signal
-import logging
 from typing import Optional
 from datetime import datetime
 
 from .live_trader import LiveTrader
+from .utils.logging_config import setup_logging, get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class TradingManager:
     def __init__(self):
@@ -77,14 +77,11 @@ class TradingManager:
                     pass
 
 def main():
-    # Configure logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.StreamHandler(),
-            logging.FileHandler(f"logs/live_trading_{datetime.now():%Y%m%d_%H%M%S}.log")
-        ]
+    # Configure logging using centralized setup
+    setup_logging(
+        level='INFO',
+        format_string='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        log_file=f"logs/live_trading_{datetime.now():%Y%m%d_%H%M%S}.log"
     )
     
     # Create and run trading manager
