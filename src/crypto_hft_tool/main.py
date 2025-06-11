@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import asyncio
 from fastapi.responses import JSONResponse
 import os
+import pandas as pd
 
 # Centralized logging setup
 from src.crypto_hft_tool.utils.logging_config import setup_logging, get_logger
